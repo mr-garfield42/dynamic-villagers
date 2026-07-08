@@ -12,6 +12,9 @@ A complete overhaul of Minecraft villages: villagers become autonomous citizens 
 gather resources, build, trade, and organize into living societies.
 '''
 
+[[mixins]]
+config="dynamicvillagers.mixins.json"
+
 [[dependencies.${mod_id}]]
     modId="neoforge"
     type="required"

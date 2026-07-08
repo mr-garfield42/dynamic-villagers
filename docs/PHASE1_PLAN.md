@@ -4,8 +4,12 @@ Goal (from CLAUDE.md): **villagers behave like simplified players.** Individual 
 hunger, tool use with durability, item pickup/carrying, basic memory, and a simple task system.
 No construction, no economy, no village-level planning yet.
 
-Status: **planning** — no implementation started. This document is the proposed breakdown;
-milestones should land roughly in order, each one playable/observable in a dev client.
+Status: **in progress** (updated 2026-07-08).
+- Done: GameTest harness (headless, `gradlew runGameTestServer`); milestone 1.0 (attachment
+  plumbing, `VillagerEssence`, `/dv inspect` + `/dv hunger` commands); 1.1 extended inventory
+  (27 logical slots — vanilla 8 + 19 extra; item pickup still open); 1.2 hunger decay + eat
+  behavior (Brain injection via `VillagerGoalPackages` mixin). 6/6 GameTests green.
+- Next: 1.1 item pickup, 1.3 WorkExecutor, 1.4 memory, 1.5 task system, 1.6 mod-coexistence pass.
 
 ## Architectural decisions (proposed)
 

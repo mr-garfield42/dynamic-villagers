@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.dynamicvillagers.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "VillagerGoalPackagesMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
