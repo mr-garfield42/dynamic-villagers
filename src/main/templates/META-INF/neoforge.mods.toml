@@ -1,7 +1,7 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
-issueTrackerURL="https://github.com/CHANGEME/dynamic-villagers/issues"
+issueTrackerURL="https://github.com/mr-garfield42/dynamic-villagers/issues"
 
 [[mods]]
 modId="${mod_id}"
