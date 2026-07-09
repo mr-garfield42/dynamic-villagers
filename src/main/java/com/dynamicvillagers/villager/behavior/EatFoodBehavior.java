@@ -35,7 +35,7 @@ public class EatFoodBehavior extends Behavior<Villager> {
     @Override
     protected void start(ServerLevel level, Villager villager, long gameTime) {
         VillagerEssence essence = VillagerEssence.get(villager);
-        VillagerEssence.FoodSlot slot = essence.findFoodSlot(villager);
+        VillagerEssence.SlotRef slot = essence.findFoodSlot(villager);
         if (slot == null) {
             return;
         }

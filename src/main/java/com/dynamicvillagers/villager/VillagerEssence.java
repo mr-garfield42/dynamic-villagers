@@ -1,6 +1,7 @@
 package com.dynamicvillagers.villager;
 
 import com.dynamicvillagers.registry.DVAttachments;
+import com.dynamicvillagers.villager.work.WorkOrder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
@@ -9,13 +10,16 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.common.util.INBTSerializable;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Predicate;
 
 /**
  * All Phase 1 per-villager state, stored as a single data attachment on vanilla villagers.
  * The vanilla 8-slot inventory stays untouched (vanilla farming/breeding and Villager Overhaul
- * keep working); {@link #findFoodSlot} treats vanilla slots + extra slots as one inventory.
+ * keep working); the slot helpers treat vanilla slots + extra slots as one inventory.
  */
 public class VillagerEssence implements INBTSerializable<CompoundTag> {
     public static final int MAX_HUNGER = 20;
@@ -23,6 +27,9 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
 
     private int hunger = MAX_HUNGER;
     private final SimpleContainer extraInventory = new SimpleContainer(EXTRA_SLOTS);
+    // Transient: order persistence arrives with the task system (milestone 1.5).
+    @Nullable
+    private WorkOrder currentWork;
 
     public static VillagerEssence get(Villager villager) {
         return villager.getData(DVAttachments.VILLAGER_ESSENCE);
@@ -44,24 +51,58 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
         return extraInventory;
     }
 
-    public record FoodSlot(SimpleContainer container, int slot) {
+    @Nullable
+    public WorkOrder getCurrentWork() {
+        return currentWork;
+    }
+
+    public void setCurrentWork(@Nullable WorkOrder work) {
+        this.currentWork = work;
+    }
+
+    public record SlotRef(SimpleContainer container, int slot) {
         public ItemStack stack() {
             return container.getItem(slot);
         }
     }
 
     @Nullable
-    public FoodSlot findFoodSlot(Villager villager) {
-        FoodSlot vanilla = scanForFood(villager.getInventory());
-        return vanilla != null ? vanilla : scanForFood(extraInventory);
+    public SlotRef findFoodSlot(Villager villager) {
+        return findSlot(villager, stack -> stack.has(DataComponents.FOOD));
     }
 
     @Nullable
-    private static FoodSlot scanForFood(SimpleContainer container) {
+    public SlotRef findSlot(Villager villager, Predicate<ItemStack> predicate) {
+        SlotRef vanilla = scan(villager.getInventory(), predicate);
+        return vanilla != null ? vanilla : scan(extraInventory, predicate);
+    }
+
+    /** Best mining tool in the combined inventory, or null if bare hands are just as good. */
+    @Nullable
+    public SlotRef findBestTool(Villager villager, BlockState state) {
+        SlotRef best = null;
+        float bestSpeed = 1.0F; // bare hands
+        for (SimpleContainer container : new SimpleContainer[]{villager.getInventory(), extraInventory}) {
+            for (int i = 0; i < container.getContainerSize(); i++) {
+                ItemStack stack = container.getItem(i);
+                if (!stack.isEmpty()) {
+                    float speed = stack.getDestroySpeed(state);
+                    if (speed > bestSpeed) {
+                        bestSpeed = speed;
+                        best = new SlotRef(container, i);
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    @Nullable
+    private static SlotRef scan(SimpleContainer container, Predicate<ItemStack> predicate) {
         for (int i = 0; i < container.getContainerSize(); i++) {
             ItemStack stack = container.getItem(i);
-            if (!stack.isEmpty() && stack.has(DataComponents.FOOD)) {
-                return new FoodSlot(container, i);
+            if (!stack.isEmpty() && predicate.test(stack)) {
+                return new SlotRef(container, i);
             }
         }
         return null;

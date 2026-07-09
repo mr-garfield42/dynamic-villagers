@@ -1,12 +1,16 @@
 package com.dynamicvillagers.command;
 
 import com.dynamicvillagers.villager.VillagerEssence;
+import com.dynamicvillagers.villager.work.BreakBlockOrder;
+import com.dynamicvillagers.villager.work.PlaceBlockOrder;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.Entity;
@@ -25,7 +29,15 @@ public final class DVCommands {
                 .then(Commands.literal("hunger")
                         .then(Commands.argument("target", EntityArgument.entity())
                                 .then(Commands.argument("value", IntegerArgumentType.integer(0, VillagerEssence.MAX_HUNGER))
-                                        .executes(DVCommands::setHunger)))));
+                                        .executes(DVCommands::setHunger))))
+                .then(Commands.literal("break")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                        .executes(DVCommands::orderBreak))))
+                .then(Commands.literal("place")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                        .executes(DVCommands::orderPlace)))));
     }
 
     private static int inspect(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
@@ -55,6 +67,22 @@ public final class DVCommands {
         int value = IntegerArgumentType.getInteger(ctx, "value");
         VillagerEssence.get(villager).setHunger(value);
         ctx.getSource().sendSuccess(() -> Component.literal("hunger set to " + value), false);
+        return 1;
+    }
+
+    private static int orderBreak(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        BlockPos pos = BlockPosArgument.getLoadedBlockPos(ctx, "pos");
+        VillagerEssence.get(villager).setCurrentWork(new BreakBlockOrder(pos));
+        ctx.getSource().sendSuccess(() -> Component.literal("break ordered at " + pos.toShortString()), false);
+        return 1;
+    }
+
+    private static int orderPlace(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        BlockPos pos = BlockPosArgument.getLoadedBlockPos(ctx, "pos");
+        VillagerEssence.get(villager).setCurrentWork(new PlaceBlockOrder(pos));
+        ctx.getSource().sendSuccess(() -> Component.literal("place ordered at " + pos.toShortString()), false);
         return 1;
     }
 

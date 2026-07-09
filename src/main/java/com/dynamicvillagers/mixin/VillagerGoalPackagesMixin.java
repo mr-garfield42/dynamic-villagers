@@ -1,6 +1,8 @@
 package com.dynamicvillagers.mixin;
 
 import com.dynamicvillagers.villager.behavior.EatFoodBehavior;
+import com.dynamicvillagers.villager.behavior.ExecuteWorkBehavior;
+import com.dynamicvillagers.villager.behavior.SeekFoodItemBehavior;
 import com.google.common.collect.ImmutableList;
 import com.mojang.datafixers.util.Pair;
 import net.minecraft.world.entity.ai.behavior.BehaviorControl;
@@ -28,6 +30,8 @@ public abstract class VillagerGoalPackagesMixin {
             CallbackInfoReturnable<ImmutableList<Pair<Integer, ? extends BehaviorControl<? super Villager>>>> cir) {
         List<Pair<Integer, ? extends BehaviorControl<? super Villager>>> behaviors = new ArrayList<>(cir.getReturnValue());
         behaviors.add(Pair.of(5, new EatFoodBehavior()));
+        behaviors.add(Pair.of(5, new SeekFoodItemBehavior()));
+        behaviors.add(Pair.of(5, new ExecuteWorkBehavior()));
         cir.setReturnValue(ImmutableList.copyOf(behaviors));
     }
 }

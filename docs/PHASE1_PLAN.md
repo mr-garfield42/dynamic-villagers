@@ -5,11 +5,16 @@ hunger, tool use with durability, item pickup/carrying, basic memory, and a simp
 No construction, no economy, no village-level planning yet.
 
 Status: **in progress** (updated 2026-07-08).
-- Done: GameTest harness (headless, `gradlew runGameTestServer`); milestone 1.0 (attachment
-  plumbing, `VillagerEssence`, `/dv inspect` + `/dv hunger` commands); 1.1 extended inventory
-  (27 logical slots — vanilla 8 + 19 extra; item pickup still open); 1.2 hunger decay + eat
-  behavior (Brain injection via `VillagerGoalPackages` mixin). 6/6 GameTests green.
-- Next: 1.1 item pickup, 1.3 WorkExecutor, 1.4 memory, 1.5 task system, 1.6 mod-coexistence pass.
+- Done: GameTest harness (headless, `gradlew runGameTestServer`; note: template content sits at
+  helper-relative y=1+, floor y=1, entities stand at y=2); milestone 1.0 (attachment plumbing,
+  `VillagerEssence`, `/dv` debug commands); 1.1 extended inventory (27 logical slots) + item
+  pickup (hungry villagers want any food via `VillagerMixin`, walk to dropped food via
+  `SeekFoodItemBehavior`); 1.2 hunger decay + eat behavior; 1.3 WorkExecutor (`WorkOrder` /
+  `BreakBlockOrder` / `PlaceBlockOrder` ticked by `ExecuteWorkBehavior` — reach requirement,
+  best-tool selection, player mining formula, crack animation, durability loss, correct-tool
+  drops; `/dv break`, `/dv place`). 10/10 GameTests green.
+- Next: 1.4 memory, 1.5 task system, 1.6 mod-coexistence pass, starvation state hook,
+  extra-inventory overflow on pickup, line-of-sight check for work (currently reach-only).
 
 ## Architectural decisions (proposed)
 
