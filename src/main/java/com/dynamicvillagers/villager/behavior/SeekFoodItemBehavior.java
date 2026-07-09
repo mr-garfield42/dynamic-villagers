@@ -48,8 +48,9 @@ public class SeekFoodItemBehavior extends Behavior<Villager> {
         return target != null;
     }
 
+    /** Public for gametests: the gate that keeps villagers from chasing non-food drops. */
     @Nullable
-    private static ItemEntity findNearestFood(ServerLevel level, Villager villager) {
+    public static ItemEntity findNearestFood(ServerLevel level, Villager villager) {
         return level.getEntitiesOfClass(ItemEntity.class,
                         villager.getBoundingBox().inflate(SCAN_RADIUS, 8.0, SCAN_RADIUS),
                         item -> item.isAlive() && item.getItem().has(DataComponents.FOOD))

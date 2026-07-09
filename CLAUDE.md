@@ -293,7 +293,7 @@ Features:
     
 - Builders know where supplies are (only to prevent time wasted searching through chests)
     
-- Miners deposit resources
+- Miners, lumberjacks, farmers, deposit resources
     
 
 Goal:
@@ -621,7 +621,7 @@ You may update and modify this document with any useful information you find whi
   safely, survives brain rebuilds, composes with GV/VO/Thief.
 - Architecture decision (Phase 1): enhance vanilla `minecraft:villager` (no custom entity);
   per-villager state in one codec-serialized NeoForge data attachment; village-level state in
-  `SavedData`. See docs/PHASE1_PLAN.md.
+  `SavedData`. See docs/PHASE1_PLAN.md (complete) and docs/PHASE2_PLAN.md (current).
 
 ## Dev environment (this machine)
 - JDK 21 is portable at `%USERPROFILE%\.jdks\jdk-21.0.11+10` (not on PATH). Before Gradle:

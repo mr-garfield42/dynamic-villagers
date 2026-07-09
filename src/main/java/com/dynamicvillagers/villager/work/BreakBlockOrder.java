@@ -8,9 +8,18 @@ import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
+/**
+ * Breaks the target block under player rules. If another block obstructs the villager's view
+ * of the target (leaves over a log, grass over an ore), that block is mined first — players
+ * cannot mine through things, and neither can villagers.
+ */
 public class BreakBlockOrder implements WorkOrder {
     private final BlockPos pos;
+    @Nullable
+    private BlockPos workPos; // the block actually being hit right now: an obstruction or pos
     private float progress;
     private int lastCrackStage = -1;
 
@@ -25,14 +34,28 @@ public class BreakBlockOrder implements WorkOrder {
 
     @Override
     public boolean tick(ServerLevel level, Villager villager) {
-        BlockState state = level.getBlockState(pos);
-        if (state.isAir()) {
-            clearCracks(level, villager);
+        if (level.getBlockState(pos).isAir()) {
+            abort(level, villager);
             return true;
         }
-        float hardness = state.getDestroySpeed(level, pos);
-        if (hardness < 0) { // unbreakable, same as for players
-            clearCracks(level, villager);
+
+        BlockPos obstruction = WorkHelper.findObstruction(level, villager, pos);
+        BlockPos target = obstruction != null ? obstruction : pos;
+        if (!target.equals(workPos)) {
+            abort(level, villager); // switching blocks: cracks and progress belong to one block
+            workPos = target;
+        }
+        // eyes on the block actually being hit (this runs after the task's look call, so the
+        // obstruction wins over the final target while it is being cleared)
+        villager.getLookControl().setLookAt(Vec3.atCenterOf(target));
+
+        BlockState state = level.getBlockState(target);
+        if (state.isAir()) {
+            return false; // changed under us; re-evaluate next tick
+        }
+        float hardness = state.getDestroySpeed(level, target);
+        if (hardness < 0) { // unbreakable (target or obstruction), same as for players
+            abort(level, villager);
             return true;
         }
 
@@ -45,7 +68,7 @@ public class BreakBlockOrder implements WorkOrder {
 
         int crackStage = (int) (progress * 10.0F) - 1;
         if (crackStage != lastCrackStage) {
-            level.destroyBlockProgress(villager.getId(), pos, crackStage);
+            level.destroyBlockProgress(villager.getId(), target, crackStage);
             lastCrackStage = crackStage;
         }
 
@@ -54,22 +77,24 @@ public class BreakBlockOrder implements WorkOrder {
         }
 
         if (correctTool) {
-            Block.dropResources(state, level, pos, state.hasBlockEntity() ? level.getBlockEntity(pos) : null, villager, tool);
+            Block.dropResources(state, level, target, state.hasBlockEntity() ? level.getBlockEntity(target) : null, villager, tool);
         }
-        level.destroyBlock(pos, false, villager);
+        level.destroyBlock(target, false, villager);
         if (!tool.isEmpty()) {
             tool.hurtAndBreak(1, villager, EquipmentSlot.MAINHAND);
         }
-        clearCracks(level, villager);
-        return true;
+        boolean wasFinalTarget = target.equals(pos);
+        abort(level, villager);
+        return wasFinalTarget; // an obstruction down is progress, not completion
     }
 
     @Override
     public void abort(ServerLevel level, Villager villager) {
-        clearCracks(level, villager);
-    }
-
-    private void clearCracks(ServerLevel level, Villager villager) {
-        level.destroyBlockProgress(villager.getId(), pos, -1);
+        if (workPos != null) {
+            level.destroyBlockProgress(villager.getId(), workPos, -1);
+        }
+        workPos = null;
+        progress = 0.0F;
+        lastCrackStage = -1;
     }
 }

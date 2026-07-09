@@ -18,6 +18,9 @@ public final class TaskTypes {
         register(PlaceBlockTask.TYPE, PlaceBlockTask::load);
         register(DepositToContainerTask.TYPE, DepositToContainerTask::load);
         register(PickUpItemsTask.TYPE, PickUpItemsTask::load);
+        register(ChopTreeTask.TYPE, ChopTreeTask::load);
+        register(TakeItemsTask.TYPE, TakeItemsTask::load);
+        register(TillSoilTask.TYPE, TillSoilTask::load);
     }
 
     public static void register(String typeId, BiFunction<CompoundTag, HolderLookup.Provider, Task> loader) {

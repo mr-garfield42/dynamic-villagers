@@ -1,5 +1,6 @@
 package com.dynamicvillagers.villager.task;
 
+import com.dynamicvillagers.villager.work.ItemFilter;
 import com.dynamicvillagers.villager.work.PlaceBlockOrder;
 import com.dynamicvillagers.villager.work.WorkHelper;
 import net.minecraft.core.BlockPos;
@@ -12,9 +13,15 @@ public class PlaceBlockTask implements Task {
     public static final String TYPE = "place_block";
 
     private final PlaceBlockOrder order;
+    private final String filter;
 
     public PlaceBlockTask(BlockPos pos) {
-        this.order = new PlaceBlockOrder(pos);
+        this(pos, "any");
+    }
+
+    public PlaceBlockTask(BlockPos pos, String filter) {
+        this.filter = filter;
+        this.order = new PlaceBlockOrder(pos, ItemFilter.parse(filter));
     }
 
     @Override
@@ -31,13 +38,20 @@ public class PlaceBlockTask implements Task {
     }
 
     @Override
+    public void onInterrupt(ServerLevel level, Villager villager) {
+        order.abort(level, villager); // clears crack progress if it was mining an obstruction
+    }
+
+    @Override
     public CompoundTag save(HolderLookup.Provider provider) {
         CompoundTag tag = new CompoundTag();
         tag.putLong("pos", order.pos().asLong());
+        tag.putString("filter", filter);
         return tag;
     }
 
     public static Task load(CompoundTag tag, HolderLookup.Provider provider) {
-        return new PlaceBlockTask(BlockPos.of(tag.getLong("pos")));
+        String filter = tag.getString("filter");
+        return new PlaceBlockTask(BlockPos.of(tag.getLong("pos")), filter.isEmpty() ? "any" : filter);
     }
 }

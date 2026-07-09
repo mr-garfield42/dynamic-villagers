@@ -68,7 +68,8 @@ public final class PerceptionSystem {
         }
     }
 
-    private static boolean canSee(ServerLevel level, Villager villager, BlockPos pos) {
+    /** Line-of-sight from the villager's eyes to a block, ignoring transparent visuals. */
+    public static boolean canSee(ServerLevel level, Villager villager, BlockPos pos) {
         Vec3 eye = villager.getEyePosition();
         Vec3 target = Vec3.atCenterOf(pos);
         BlockHitResult hit = level.clip(

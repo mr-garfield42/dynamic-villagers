@@ -3,6 +3,7 @@ package com.dynamicvillagers.gametest;
 import com.dynamicvillagers.DynamicVillagers;
 import com.dynamicvillagers.villager.HungerSystem;
 import com.dynamicvillagers.villager.VillagerEssence;
+import com.dynamicvillagers.villager.behavior.SeekFoodItemBehavior;
 import com.dynamicvillagers.villager.task.BreakBlockTask;
 import com.dynamicvillagers.villager.task.DepositToContainerTask;
 import com.dynamicvillagers.villager.task.PickUpItemsTask;
@@ -260,13 +261,23 @@ public class VillagerFrameworkTests {
     }
 
     @GameTest(template = "empty5x5")
-    public static void does_not_walk_to_non_food_items(GameTestHelper helper) {
+    public static void does_not_seek_non_food_items(GameTestHelper helper) {
+        // Tests the seek gate directly: asserting on emergent movement was racy, because a
+        // random idle stroll can walk the villager onto the item (auto-pickup is allowed).
         Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(3, 2, 3));
         VillagerEssence.get(villager).setHunger(5); // hungry — but pickaxes are not food
         helper.spawnItem(Items.IRON_PICKAXE, 0.5F, 2.5F, 0.5F);
-        helper.runAfterDelay(80, () -> {
-            helper.assertItemEntityPresent(Items.IRON_PICKAXE, new BlockPos(0, 2, 0), 2.0);
-            helper.succeed();
+        helper.runAfterDelay(5, () -> {
+            helper.assertTrue(
+                    SeekFoodItemBehavior.findNearestFood(helper.getLevel(), villager) == null,
+                    "a pickaxe must not register as seekable food");
+            helper.spawnItem(Items.BREAD, 1.5F, 2.5F, 1.5F);
+            helper.runAfterDelay(5, () -> {
+                helper.assertTrue(
+                        SeekFoodItemBehavior.findNearestFood(helper.getLevel(), villager) != null,
+                        "dropped bread must register as seekable food");
+                helper.succeed();
+            });
         });
     }
 

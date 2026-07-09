@@ -20,8 +20,11 @@ import java.util.Set;
  */
 public class VillagerMemory {
     public static final int MAX_CONTAINERS = 16;
+    public static final int MAX_SPOTS_PER_KIND = 16;
 
     private final Map<BlockPos, Long> containers = new LinkedHashMap<>(); // pos -> last seen game time
+    // named resource spots (e.g. "tree" bases) learned by perception, capped per kind
+    private final Map<String, Map<BlockPos, Long>> spots = new LinkedHashMap<>();
 
     public void rememberContainer(BlockPos pos, long gameTime) {
         containers.put(pos.immutable(), gameTime);
@@ -45,6 +48,63 @@ public class VillagerMemory {
         return containers.keySet().stream()
                 .min(Comparator.comparingDouble(pos -> pos.distSqr(from)))
                 .orElse(null);
+    }
+
+    public void rememberSpot(String kind, BlockPos pos, long gameTime) {
+        Map<BlockPos, Long> ofKind = spots.computeIfAbsent(kind, k -> new LinkedHashMap<>());
+        ofKind.put(pos.immutable(), gameTime);
+        if (ofKind.size() > MAX_SPOTS_PER_KIND) {
+            ofKind.entrySet().stream()
+                    .min(Map.Entry.comparingByValue())
+                    .ifPresent(oldest -> ofKind.remove(oldest.getKey()));
+        }
+    }
+
+    public void forgetSpot(String kind, BlockPos pos) {
+        Map<BlockPos, Long> ofKind = spots.get(kind);
+        if (ofKind != null) {
+            ofKind.remove(pos);
+            if (ofKind.isEmpty()) {
+                spots.remove(kind);
+            }
+        }
+    }
+
+    public Set<BlockPos> knownSpots(String kind) {
+        Map<BlockPos, Long> ofKind = spots.get(kind);
+        return ofKind == null ? Collections.emptySet() : Collections.unmodifiableSet(ofKind.keySet());
+    }
+
+    public List<BlockPos> spotsByDistance(String kind, BlockPos from) {
+        return knownSpots(kind).stream()
+                .sorted(Comparator.comparingDouble(pos -> pos.distSqr(from)))
+                .toList();
+    }
+
+    public CompoundTag saveSpots() {
+        CompoundTag tag = new CompoundTag();
+        for (Map.Entry<String, Map<BlockPos, Long>> kind : spots.entrySet()) {
+            ListTag list = new ListTag();
+            for (Map.Entry<BlockPos, Long> entry : kind.getValue().entrySet()) {
+                CompoundTag spot = new CompoundTag();
+                spot.putLong("p", entry.getKey().asLong());
+                spot.putLong("t", entry.getValue());
+                list.add(spot);
+            }
+            tag.put(kind.getKey(), list);
+        }
+        return tag;
+    }
+
+    public void loadSpots(CompoundTag tag) {
+        spots.clear();
+        for (String kind : tag.getAllKeys()) {
+            for (Tag entry : tag.getList(kind, Tag.TAG_COMPOUND)) {
+                if (entry instanceof CompoundTag spot) {
+                    rememberSpot(kind, BlockPos.of(spot.getLong("p")), spot.getLong("t"));
+                }
+            }
+        }
     }
 
     public ListTag save() {

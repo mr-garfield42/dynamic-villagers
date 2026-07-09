@@ -2,6 +2,7 @@ package com.dynamicvillagers.mixin;
 
 import com.dynamicvillagers.villager.behavior.EatFoodBehavior;
 import com.dynamicvillagers.villager.behavior.ExecuteTaskBehavior;
+import com.dynamicvillagers.villager.behavior.PlanWorkBehavior;
 import com.dynamicvillagers.villager.behavior.SeekFoodItemBehavior;
 import com.google.common.collect.ImmutableList;
 import net.minecraft.world.entity.ai.Brain;
@@ -29,6 +30,7 @@ public abstract class VillagerMixin {
         brain.addActivity(Activity.CORE, 5, ImmutableList.of(
                 new EatFoodBehavior(),
                 new SeekFoodItemBehavior(),
+                new PlanWorkBehavior(),
                 new ExecuteTaskBehavior()));
     }
 
