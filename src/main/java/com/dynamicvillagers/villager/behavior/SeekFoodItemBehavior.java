@@ -38,6 +38,7 @@ public class SeekFoodItemBehavior extends Behavior<Villager> {
         VillagerEssence essence = VillagerEssence.get(villager);
         if (essence.getHunger() >= EatFoodBehavior.HUNGER_THRESHOLD
                 || essence.findFoodSlot(villager) != null
+                || !essence.getTaskQueue().isEmpty() // assigned work takes precedence over foraging
                 || villager.tickCount % SCAN_INTERVAL_TICKS != 0) {
             return false;
         }

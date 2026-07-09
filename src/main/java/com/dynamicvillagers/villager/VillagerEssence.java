@@ -1,7 +1,7 @@
 package com.dynamicvillagers.villager;
 
 import com.dynamicvillagers.registry.DVAttachments;
-import com.dynamicvillagers.villager.work.WorkOrder;
+import com.dynamicvillagers.villager.task.TaskQueue;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
@@ -27,9 +27,8 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
 
     private int hunger = MAX_HUNGER;
     private final SimpleContainer extraInventory = new SimpleContainer(EXTRA_SLOTS);
-    // Transient: order persistence arrives with the task system (milestone 1.5).
-    @Nullable
-    private WorkOrder currentWork;
+    private final VillagerMemory memory = new VillagerMemory();
+    private final TaskQueue taskQueue = new TaskQueue();
 
     public static VillagerEssence get(Villager villager) {
         return villager.getData(DVAttachments.VILLAGER_ESSENCE);
@@ -51,13 +50,12 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
         return extraInventory;
     }
 
-    @Nullable
-    public WorkOrder getCurrentWork() {
-        return currentWork;
+    public VillagerMemory getMemory() {
+        return memory;
     }
 
-    public void setCurrentWork(@Nullable WorkOrder work) {
-        this.currentWork = work;
+    public TaskQueue getTaskQueue() {
+        return taskQueue;
     }
 
     public record SlotRef(SimpleContainer container, int slot) {
@@ -113,6 +111,8 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
         CompoundTag tag = new CompoundTag();
         tag.putInt("hunger", hunger);
         tag.put("extra_inventory", extraInventory.createTag(provider));
+        tag.put("memory_containers", memory.save());
+        tag.put("tasks", taskQueue.save(provider));
         return tag;
     }
 
@@ -120,5 +120,7 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
     public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
         setHunger(tag.getInt("hunger"));
         extraInventory.fromTag(tag.getList("extra_inventory", Tag.TAG_COMPOUND), provider);
+        memory.load(tag.getList("memory_containers", Tag.TAG_COMPOUND));
+        taskQueue.load(tag.getList("tasks", Tag.TAG_COMPOUND), provider);
     }
 }

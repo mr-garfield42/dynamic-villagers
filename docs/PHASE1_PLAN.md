@@ -4,17 +4,23 @@ Goal (from CLAUDE.md): **villagers behave like simplified players.** Individual 
 hunger, tool use with durability, item pickup/carrying, basic memory, and a simple task system.
 No construction, no economy, no village-level planning yet.
 
-Status: **in progress** (updated 2026-07-08).
+Status: **in progress** (updated 2026-07-09).
 - Done: GameTest harness (headless, `gradlew runGameTestServer`; note: template content sits at
-  helper-relative y=1+, floor y=1, entities stand at y=2); milestone 1.0 (attachment plumbing,
-  `VillagerEssence`, `/dv` debug commands); 1.1 extended inventory (27 logical slots) + item
-  pickup (hungry villagers want any food via `VillagerMixin`, walk to dropped food via
-  `SeekFoodItemBehavior`); 1.2 hunger decay + eat behavior; 1.3 WorkExecutor (`WorkOrder` /
-  `BreakBlockOrder` / `PlaceBlockOrder` ticked by `ExecuteWorkBehavior` — reach requirement,
-  best-tool selection, player mining formula, crack animation, durability loss, correct-tool
-  drops; `/dv break`, `/dv place`). 10/10 GameTests green.
-- Next: 1.4 memory, 1.5 task system, 1.6 mod-coexistence pass, starvation state hook,
-  extra-inventory overflow on pickup, line-of-sight check for work (currently reach-only).
+  helper-relative y=1+, floor y=1, entities stand at y=2); 1.0 attachment plumbing +
+  `VillagerEssence` + `/dv` commands; 1.1 extended inventory (27 logical slots) + food pickup +
+  task-driven pickup with overflow into extra slots; 1.2 hunger decay + eat behavior;
+  1.3 work orders (`BreakBlockOrder`/`PlaceBlockOrder` — reach, best tool, player mining
+  formula, crack animation, durability, correct-tool drops); 1.4 `VillagerMemory` (known
+  containers, line-of-sight learning via `PerceptionSystem`, forget-on-invalid, capped at 16);
+  1.5 `TaskQueue` (priority + FIFO, NBT persistence, unknown-type-tolerant loading) with
+  `GoToTask`/`BreakBlockTask`/`PlaceBlockTask`/`DepositToContainerTask`/`PickUpItemsTask`,
+  ticked by `ExecuteTaskBehavior`; commands: `/dv inspect|hunger|break|place|goto|deposit|
+  pickup|tasks|cleartasks`. 16/16 GameTests green.
+- Design note: reactive needs (eat, seek food) are Brain behaviors, not tasks — tasks are for
+  ordered work only; assigned tasks take precedence over foraging (hungry workers still eat
+  from carried food).
+- Next: 1.6 mod-coexistence pass (all three companion mods loaded in one dev run), starvation
+  state hook, line-of-sight check for work (currently reach-only), then Phase 2.
 
 ## Architectural decisions (proposed)
 

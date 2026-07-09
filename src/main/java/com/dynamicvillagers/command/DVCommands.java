@@ -1,8 +1,12 @@
 package com.dynamicvillagers.command;
 
 import com.dynamicvillagers.villager.VillagerEssence;
-import com.dynamicvillagers.villager.work.BreakBlockOrder;
-import com.dynamicvillagers.villager.work.PlaceBlockOrder;
+import com.dynamicvillagers.villager.task.BreakBlockTask;
+import com.dynamicvillagers.villager.task.DepositToContainerTask;
+import com.dynamicvillagers.villager.task.GoToTask;
+import com.dynamicvillagers.villager.task.PickUpItemsTask;
+import com.dynamicvillagers.villager.task.PlaceBlockTask;
+import com.dynamicvillagers.villager.task.Task;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -33,20 +37,64 @@ public final class DVCommands {
                 .then(Commands.literal("break")
                         .then(Commands.argument("target", EntityArgument.entity())
                                 .then(Commands.argument("pos", BlockPosArgument.blockPos())
-                                        .executes(DVCommands::orderBreak))))
+                                        .executes(ctx -> enqueue(ctx, new BreakBlockTask(BlockPosArgument.getLoadedBlockPos(ctx, "pos")))))))
                 .then(Commands.literal("place")
                         .then(Commands.argument("target", EntityArgument.entity())
                                 .then(Commands.argument("pos", BlockPosArgument.blockPos())
-                                        .executes(DVCommands::orderPlace)))));
+                                        .executes(ctx -> enqueue(ctx, new PlaceBlockTask(BlockPosArgument.getLoadedBlockPos(ctx, "pos")))))))
+                .then(Commands.literal("goto")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                        .executes(ctx -> enqueue(ctx, new GoToTask(BlockPosArgument.getLoadedBlockPos(ctx, "pos"), 2))))))
+                .then(Commands.literal("deposit")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .executes(ctx -> enqueue(ctx, new DepositToContainerTask()))))
+                .then(Commands.literal("pickup")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .executes(ctx -> enqueue(ctx, new PickUpItemsTask(requireVillager(ctx).blockPosition(), 8.0)))))
+                .then(Commands.literal("tasks")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .executes(DVCommands::listTasks)))
+                .then(Commands.literal("cleartasks")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .executes(DVCommands::clearTasks))));
+    }
+
+    private static int enqueue(CommandContext<CommandSourceStack> ctx, Task task) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        VillagerEssence.get(villager).getTaskQueue().enqueue(task);
+        ctx.getSource().sendSuccess(() -> Component.literal("queued " + task.typeId()), false);
+        return 1;
     }
 
     private static int inspect(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         Villager villager = requireVillager(ctx);
         VillagerEssence essence = VillagerEssence.get(villager);
         ctx.getSource().sendSuccess(() -> Component.literal(
-                "%s | hunger %d/%d".formatted(villager.getName().getString(), essence.getHunger(), VillagerEssence.MAX_HUNGER)), false);
+                "%s | hunger %d/%d | %d tasks | knows %d containers".formatted(
+                        villager.getName().getString(), essence.getHunger(), VillagerEssence.MAX_HUNGER,
+                        essence.getTaskQueue().size(), essence.getMemory().knownContainers().size())), false);
         sendInventory(ctx, "vanilla", villager.getInventory());
         sendInventory(ctx, "extra", essence.getExtraInventory());
+        return 1;
+    }
+
+    private static int listTasks(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        VillagerEssence essence = VillagerEssence.get(villager);
+        StringBuilder line = new StringBuilder("tasks:");
+        for (Task task : essence.getTaskQueue().tasks()) {
+            line.append(' ').append(task.typeId());
+        }
+        String text = essence.getTaskQueue().isEmpty() ? "tasks: none" : line.toString();
+        ctx.getSource().sendSuccess(() -> Component.literal(text), false);
+        return 1;
+    }
+
+    private static int clearTasks(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        VillagerEssence.get(villager).getTaskQueue().clear();
+        ctx.getSource().sendSuccess(() -> Component.literal("task queue cleared"), false);
         return 1;
     }
 
@@ -67,22 +115,6 @@ public final class DVCommands {
         int value = IntegerArgumentType.getInteger(ctx, "value");
         VillagerEssence.get(villager).setHunger(value);
         ctx.getSource().sendSuccess(() -> Component.literal("hunger set to " + value), false);
-        return 1;
-    }
-
-    private static int orderBreak(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-        Villager villager = requireVillager(ctx);
-        BlockPos pos = BlockPosArgument.getLoadedBlockPos(ctx, "pos");
-        VillagerEssence.get(villager).setCurrentWork(new BreakBlockOrder(pos));
-        ctx.getSource().sendSuccess(() -> Component.literal("break ordered at " + pos.toShortString()), false);
-        return 1;
-    }
-
-    private static int orderPlace(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-        Villager villager = requireVillager(ctx);
-        BlockPos pos = BlockPosArgument.getLoadedBlockPos(ctx, "pos");
-        VillagerEssence.get(villager).setCurrentWork(new PlaceBlockOrder(pos));
-        ctx.getSource().sendSuccess(() -> Component.literal("place ordered at " + pos.toShortString()), false);
         return 1;
     }
 

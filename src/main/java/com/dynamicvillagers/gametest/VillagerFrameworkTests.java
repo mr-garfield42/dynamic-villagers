@@ -3,13 +3,18 @@ package com.dynamicvillagers.gametest;
 import com.dynamicvillagers.DynamicVillagers;
 import com.dynamicvillagers.villager.HungerSystem;
 import com.dynamicvillagers.villager.VillagerEssence;
-import com.dynamicvillagers.villager.work.BreakBlockOrder;
-import com.dynamicvillagers.villager.work.PlaceBlockOrder;
+import com.dynamicvillagers.villager.task.BreakBlockTask;
+import com.dynamicvillagers.villager.task.DepositToContainerTask;
+import com.dynamicvillagers.villager.task.PickUpItemsTask;
+import com.dynamicvillagers.villager.task.PlaceBlockTask;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.Container;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -104,7 +109,7 @@ public class VillagerFrameworkTests {
         helper.setBlock(target, Blocks.STONE);
         VillagerEssence essence = VillagerEssence.get(villager);
         essence.getExtraInventory().setItem(0, new ItemStack(Items.IRON_PICKAXE));
-        essence.setCurrentWork(new BreakBlockOrder(helper.absolutePos(target)));
+        essence.getTaskQueue().enqueue(new BreakBlockTask(helper.absolutePos(target)));
         helper.succeedWhen(() -> {
             helper.assertBlockNotPresent(Blocks.STONE, target);
             helper.assertItemEntityPresent(Items.COBBLESTONE, target, 3.0);
@@ -119,12 +124,113 @@ public class VillagerFrameworkTests {
         BlockPos target = new BlockPos(3, 2, 3);
         VillagerEssence essence = VillagerEssence.get(villager);
         essence.getExtraInventory().setItem(0, new ItemStack(Items.COBBLESTONE, 4));
-        essence.setCurrentWork(new PlaceBlockOrder(helper.absolutePos(target)));
+        essence.getTaskQueue().enqueue(new PlaceBlockTask(helper.absolutePos(target)));
         helper.succeedWhen(() -> {
             helper.assertBlockPresent(Blocks.COBBLESTONE, target);
             helper.assertTrue(essence.getExtraInventory().getItem(0).getCount() == 3,
                     "one cobblestone should be consumed from the inventory");
         });
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 400)
+    public static void learns_nearby_container_by_seeing_it(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        BlockPos chest = new BlockPos(4, 2, 4);
+        helper.setBlock(chest, Blocks.CHEST);
+        helper.succeedWhen(() -> helper.assertTrue(
+                VillagerEssence.get(villager).getMemory().knownContainers().contains(helper.absolutePos(chest)),
+                "villager should remember the chest it can see"));
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 400)
+    public static void forgets_container_that_is_gone(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        BlockPos ghost = helper.absolutePos(new BlockPos(1, 2, 3)); // remembered, but nothing is there
+        VillagerEssence.get(villager).getMemory().rememberContainer(ghost, 0);
+        helper.succeedWhen(() -> helper.assertTrue(
+                VillagerEssence.get(villager).getMemory().knownContainers().isEmpty(),
+                "villager should forget a container that no longer exists"));
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 400)
+    public static void runs_queued_tasks_sequentially(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        BlockPos target = new BlockPos(3, 2, 3);
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.COBBLESTONE, 1));
+        essence.getExtraInventory().setItem(1, new ItemStack(Items.IRON_PICKAXE));
+        essence.getTaskQueue().enqueue(new PlaceBlockTask(helper.absolutePos(target)));
+        essence.getTaskQueue().enqueue(new BreakBlockTask(helper.absolutePos(target)));
+        helper.succeedWhen(() -> {
+            helper.assertTrue(essence.getTaskQueue().isEmpty(), "both tasks should have completed");
+            helper.assertBlockNotPresent(Blocks.COBBLESTONE, target);
+            helper.assertItemEntityPresent(Items.COBBLESTONE, target, 3.0); // placed, then mined back off
+        });
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 400)
+    public static void deposits_extra_inventory_into_known_container(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        BlockPos chestPos = new BlockPos(4, 2, 4);
+        helper.setBlock(chestPos, Blocks.CHEST);
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getMemory().rememberContainer(helper.absolutePos(chestPos), 0);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.COBBLESTONE, 5));
+        essence.getTaskQueue().enqueue(new DepositToContainerTask());
+        helper.succeedWhen(() -> {
+            helper.assertTrue(helper.getBlockEntity(chestPos) instanceof Container chest
+                            && countItem(chest, Items.COBBLESTONE) == 5,
+                    "chest should contain the deposited cobblestone");
+            helper.assertTrue(essence.getExtraInventory().isEmpty(),
+                    "extra inventory should be empty after depositing");
+        });
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 600)
+    public static void collects_items_with_overflow_into_extra_inventory(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        for (int i = 0; i < villager.getInventory().getContainerSize(); i++) {
+            villager.getInventory().setItem(i, new ItemStack(Items.STICK, 64)); // vanilla slots full
+        }
+        helper.spawnItem(Items.COBBLESTONE, 1.5F, 2.5F, 1.5F);
+        helper.spawnItem(Items.COBBLESTONE, 3.5F, 2.5F, 2.5F);
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getTaskQueue().enqueue(new PickUpItemsTask(helper.absolutePos(CENTER), 8.0));
+        helper.succeedWhen(() -> {
+            helper.assertTrue(countItem(essence.getExtraInventory(), Items.COBBLESTONE) == 2,
+                    "cobblestone should overflow into the extra inventory");
+            helper.assertTrue(essence.getTaskQueue().isEmpty(), "pickup task should complete");
+        });
+    }
+
+    @GameTest(template = "empty5x5")
+    public static void essence_persists_through_serialization(GameTestHelper helper) {
+        VillagerEssence original = new VillagerEssence();
+        original.getTaskQueue().enqueue(new BreakBlockTask(helper.absolutePos(new BlockPos(1, 2, 1))), 3);
+        original.getMemory().rememberContainer(helper.absolutePos(new BlockPos(4, 2, 4)), 42);
+        original.setHunger(7);
+        CompoundTag saved = original.serializeNBT(helper.getLevel().registryAccess());
+
+        VillagerEssence restored = new VillagerEssence();
+        restored.deserializeNBT(helper.getLevel().registryAccess(), saved);
+        helper.assertTrue(restored.getHunger() == 7, "hunger should survive serialization");
+        helper.assertTrue(restored.getTaskQueue().size() == 1, "task should survive serialization");
+        helper.assertTrue(restored.getTaskQueue().current() instanceof BreakBlockTask,
+                "restored task should keep its type");
+        helper.assertTrue(restored.getMemory().knownContainers().size() == 1,
+                "memory should survive serialization");
+        helper.succeed();
+    }
+
+    private static int countItem(Container container, Item item) {
+        int count = 0;
+        for (int i = 0; i < container.getContainerSize(); i++) {
+            ItemStack stack = container.getItem(i);
+            if (stack.is(item)) {
+                count += stack.getCount();
+            }
+        }
+        return count;
     }
 
     @GameTest(template = "empty5x5")

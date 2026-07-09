@@ -1,7 +1,7 @@
 package com.dynamicvillagers.mixin;
 
 import com.dynamicvillagers.villager.behavior.EatFoodBehavior;
-import com.dynamicvillagers.villager.behavior.ExecuteWorkBehavior;
+import com.dynamicvillagers.villager.behavior.ExecuteTaskBehavior;
 import com.dynamicvillagers.villager.behavior.SeekFoodItemBehavior;
 import com.google.common.collect.ImmutableList;
 import com.mojang.datafixers.util.Pair;
@@ -31,7 +31,7 @@ public abstract class VillagerGoalPackagesMixin {
         List<Pair<Integer, ? extends BehaviorControl<? super Villager>>> behaviors = new ArrayList<>(cir.getReturnValue());
         behaviors.add(Pair.of(5, new EatFoodBehavior()));
         behaviors.add(Pair.of(5, new SeekFoodItemBehavior()));
-        behaviors.add(Pair.of(5, new ExecuteWorkBehavior()));
+        behaviors.add(Pair.of(5, new ExecuteTaskBehavior()));
         cir.setReturnValue(ImmutableList.copyOf(behaviors));
     }
 }
