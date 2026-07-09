@@ -55,9 +55,8 @@ public class PickUpItemsTask implements Task {
             }
         }
         if (villager.distanceTo(target) > PICKUP_DISTANCE) {
-            if (ticksRun % 20 == 1) {
-                BehaviorUtils.setWalkAndLookTargetMemories(villager, target, 0.6F, 1);
-            }
+            // every tick, so idle strolls can't hijack a cleared walk target mid-collection
+            BehaviorUtils.setWalkAndLookTargetMemories(villager, target, 0.6F, 1);
             return Status.IN_PROGRESS;
         }
 

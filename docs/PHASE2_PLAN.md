@@ -51,8 +51,26 @@ Status: **in progress** (started 2026-07-09).
   expensive idle path. **Baseline 50 plain villagers: 2.011 ms/tick; 50 idle lumberjacks:
   2.332 ms/tick → ~0.32 ms/tick of mod overhead for 50 workers ≈ 6 µs per villager per
   tick.** No budgeting needed at Phase 2 scale.
-- Remaining: 2.7 manual coexistence session (owner + dev client: convert a lumberjack to
-  guard mid-chop, steal from a working villager, markers/GUI smoke test).
+- 2.7 manual coexistence session (owner, 2026-07-09): guard conversion mid-chop **works**;
+  markers **work**; the Thief steal test is still pending (blocked at the time by villagers
+  never depositing — fixed below; retest when convenient).
+- Playtest fixes from that session (owner feedback, 2026-07-09):
+  - **Focus**: work tasks re-assert their WALK_TARGET every tick. It was every 20 ticks, and
+    the moment the vanilla movement sink cleared the target (reached/failed), an idle stroll
+    behavior would hijack it — the "wanders off for a second mid-job" effect.
+  - **Canopy descend**: a chopper stuck above its target (villagers can't path across leaves)
+    digs the block under its own feet after a 3 s stuck spell — only leaves/logs, never
+    terrain, so hillsides are safe.
+  - **Torches vs. digging**: tunnel/quarry dig collectors treat torch blocks as cleared (they
+    used to re-mine their own floor torches), and torch spots reject supports that the
+    *current dig batch* is about to remove (the "placed, then broken a second later" bug).
+    Supports dug in later layers are allowed on purpose: the torch serves its layer and is
+    re-placed deeper, the way players re-torch. An earlier stricter rule (no torch anywhere
+    in the pit) stalled quarries in fear-backoff loops — batch-scoped is the right width.
+  - **Eager deposits**: gatherers now deposit once carrying ≥ 16 non-kept items (~3 trees)
+    instead of only when nearly full (27 slots × 64-stacks ≈ 50 trees — why the owner's
+    storage chest stayed empty). Reminder: villagers must have *seen* the chest (within 8
+    blocks, line of sight) to know it exists.
 - Findings while testing:
   - The GameTest framework encases each running test in a **barrier cage**. Barriers are
     motion-blocking (they cap the heightmap — the cage ceiling, not the tree, is the

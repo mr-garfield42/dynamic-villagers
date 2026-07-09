@@ -19,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Standing chore for any roled villager with nothing better to do: light up dark spots
@@ -79,6 +80,16 @@ public final class TorchChore {
     /** Nearest spot within radius of center where a torch can stand, in the dark, or null. */
     @Nullable
     public static BlockPos findTorchSpotNear(ServerLevel level, BlockPos center, int radius) {
+        return findTorchSpotNear(level, center, radius, support -> false);
+    }
+
+    /**
+     * Like above, but callers whose work will remove blocks pass which supports are doomed —
+     * a torch on a block the miner is about to dig out pops a second after it's placed.
+     */
+    @Nullable
+    public static BlockPos findTorchSpotNear(ServerLevel level, BlockPos center, int radius,
+                                             Predicate<BlockPos> doomedSupport) {
         BlockPos best = null;
         double bestDist = Double.MAX_VALUE;
         for (BlockPos pos : BlockPos.betweenClosed(
@@ -86,7 +97,8 @@ public final class TorchChore {
             BlockPos below = pos.below();
             if (level.getBlockState(pos).isAir()
                     && level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)
-                    && level.getBrightness(LightLayer.BLOCK, pos) < MIN_SAFE_BLOCK_LIGHT) {
+                    && level.getBrightness(LightLayer.BLOCK, pos) < MIN_SAFE_BLOCK_LIGHT
+                    && !doomedSupport.test(below)) {
                 double dist = pos.distSqr(center);
                 if (dist < bestDist) {
                     bestDist = dist;

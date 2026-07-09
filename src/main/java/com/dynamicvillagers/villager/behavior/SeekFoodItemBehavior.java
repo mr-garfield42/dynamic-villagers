@@ -72,9 +72,7 @@ public class SeekFoodItemBehavior extends Behavior<Villager> {
 
     @Override
     protected void tick(ServerLevel level, Villager villager, long gameTime) {
-        if (gameTime % 20 == 0) {
-            walkToTarget(villager);
-        }
+        walkToTarget(villager); // every tick: keeps idle strolls from hijacking the approach
     }
 
     @Override

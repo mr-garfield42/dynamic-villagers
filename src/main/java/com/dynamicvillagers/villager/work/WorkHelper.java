@@ -24,9 +24,9 @@ public final class WorkHelper {
         // tick, so this wins over idle look-at-player targets and pins the gaze on the block.
         villager.getLookControl().setLookAt(Vec3.atCenterOf(pos));
         if (villager.getEyePosition().distanceToSqr(Vec3.atCenterOf(pos)) > REACH * REACH) {
-            if (villager.tickCount % 20 == 0) {
-                villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(pos, WALK_SPEED, 2));
-            }
+            // every tick, not periodically: the moment the walk target clears (reached or
+            // path failed), an idle stroll would hijack it and the worker wanders off mid-job
+            villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(pos, WALK_SPEED, 2));
             return false;
         }
         return true;

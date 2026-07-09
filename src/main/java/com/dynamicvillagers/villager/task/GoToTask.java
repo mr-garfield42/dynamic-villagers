@@ -34,10 +34,9 @@ public class GoToTask implements Task {
         if (++ticksRun > GIVE_UP_TICKS) {
             return Status.FAILED;
         }
-        if (ticksRun % 20 == 1) {
-            villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                    new WalkTarget(pos, 0.6F, closeEnough));
-        }
+        // every tick, so idle strolls can't hijack a cleared walk target mid-journey
+        villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+                new WalkTarget(pos, 0.6F, closeEnough));
         return Status.IN_PROGRESS;
     }
 

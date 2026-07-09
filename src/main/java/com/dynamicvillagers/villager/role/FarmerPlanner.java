@@ -13,12 +13,14 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Farm upkeep and expansion. The vanilla farmer profession keeps harvesting and replanting
@@ -30,6 +32,7 @@ import java.util.List;
 public class FarmerPlanner implements RolePlanner {
     private static final List<String> KEEP_ON_DEPOSIT = List.of("hoe", "seeds", "food");
     private static final int MIN_FREE_SLOTS = 4;
+    private static final int HAUL_THRESHOLD = 16; // deposit once carrying this many non-kept items
     private static final int SCAN_RADIUS = 8;
     private static final int SCAN_HEIGHT = 3;
     private static final int MAX_SPOTS = 8;
@@ -41,12 +44,15 @@ public class FarmerPlanner implements RolePlanner {
     @Override
     public boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
         TaskQueue queue = essence.getTaskQueue();
-        if (essence.countEmptySlots(villager) < MIN_FREE_SLOTS) {
-            if (essence.getMemory().nearestContainer(villager.blockPosition()) == null) {
-                return false;
-            }
+        Predicate<ItemStack> keep = ItemFilter.parseAny(KEEP_ON_DEPOSIT);
+        boolean haulReady = essence.countEmptySlots(villager) < MIN_FREE_SLOTS
+                || essence.countItems(villager, stack -> !keep.test(stack)) >= HAUL_THRESHOLD;
+        if (haulReady && essence.getMemory().nearestContainer(villager.blockPosition()) != null) {
             queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
             return true;
+        }
+        if (essence.countEmptySlots(villager) < MIN_FREE_SLOTS) {
+            return false; // full and nowhere to store
         }
 
         List<BlockPos> plantSpots = new ArrayList<>();

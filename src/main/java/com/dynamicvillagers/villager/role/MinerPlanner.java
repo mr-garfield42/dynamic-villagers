@@ -14,13 +14,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.common.Tags;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Milestones 2.4 + 2.5. The miner harvests ore it can see and digs designated 1×2 strip-mine
@@ -34,6 +37,7 @@ import java.util.List;
 public class MinerPlanner implements RolePlanner {
     public static final String ORE_SPOT = "ore";
     public static final int MAX_TUNNEL_LENGTH = 64;
+    private static final int HAUL_THRESHOLD = 16; // deposit once carrying this many non-kept items
     private static final List<String> KEEP_ON_DEPOSIT = List.of("pickaxe", "food", "item:minecraft:torch");
     private static final int MIN_FREE_SLOTS = 4;
     private static final int SCAN_RADIUS = 10;
@@ -50,12 +54,15 @@ public class MinerPlanner implements RolePlanner {
     public boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
         TaskQueue queue = essence.getTaskQueue();
         VillagerMemory memory = essence.getMemory();
-        if (essence.countEmptySlots(villager) < MIN_FREE_SLOTS) {
-            if (memory.nearestContainer(villager.blockPosition()) == null) {
-                return false;
-            }
+        Predicate<ItemStack> keep = ItemFilter.parseAny(KEEP_ON_DEPOSIT);
+        boolean haulReady = essence.countEmptySlots(villager) < MIN_FREE_SLOTS
+                || essence.countItems(villager, stack -> !keep.test(stack)) >= HAUL_THRESHOLD;
+        if (haulReady && memory.nearestContainer(villager.blockPosition()) != null) {
             queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
             return true;
+        }
+        if (essence.countEmptySlots(villager) < MIN_FREE_SLOTS) {
+            return false; // full and nowhere to store — stop mining until that changes
         }
 
         if (!essence.hasItem(villager, ItemFilter.parse("pickaxe"))) {
@@ -76,7 +83,8 @@ public class MinerPlanner implements RolePlanner {
             }
             if (isDarkSite(level, ore)) {
                 BlockPos torchSpot = hasTorches
-                        ? TorchChore.findTorchSpotNear(level, ore, SITE_TORCH_RADIUS) : null;
+                        ? TorchChore.findTorchSpotNear(level, ore, SITE_TORCH_RADIUS,
+                                support -> level.getBlockState(support).is(Tags.Blocks.ORES)) : null;
                 if (torchSpot == null) {
                     fearedDarkSite = true; // mobs spawn there and we can't light it — too risky
                     continue;
@@ -131,8 +139,9 @@ public class MinerPlanner implements RolePlanner {
         for (int i = 0; i < MAX_TUNNEL_LENGTH; i++) {
             BlockPos lower = site.start().relative(site.direction(), i);
             BlockPos upper = lower.above();
-            boolean lowerSolid = !level.getBlockState(lower).isAir();
-            boolean upperSolid = !level.getBlockState(upper).isAir();
+            // torches in the tunnel are ours — they are lighting, not rock to be cleared
+            boolean lowerSolid = isDiggable(level.getBlockState(lower));
+            boolean upperSolid = isDiggable(level.getBlockState(upper));
             if (!lowerSolid && !upperSolid) {
                 continue; // already dug — walk deeper
             }
@@ -194,7 +203,7 @@ public class MinerPlanner implements RolePlanner {
                         continue;
                     }
                     BlockPos pos = new BlockPos(x, y, z);
-                    if (!level.getBlockState(pos).isAir()) {
+                    if (isDiggable(level.getBlockState(pos))) { // our torches are not rock
                         digs.add(pos);
                     }
                 }
@@ -210,8 +219,12 @@ public class MinerPlanner implements RolePlanner {
             }
             BlockPos standing = batch.getFirst().above();
             if (level.getBrightness(LightLayer.BLOCK, standing) < TorchChore.MIN_SAFE_BLOCK_LIGHT) {
+                // a torch must not stand on a block THIS batch is about to dig ("placed then
+                // broken a second later"); supports dug in later layers are fine — the torch
+                // serves its layer and gets re-placed deeper, the way players re-torch
                 BlockPos torchSpot = hasTorches
-                        ? TorchChore.findTorchSpotNear(level, standing, SITE_TORCH_RADIUS) : null;
+                        ? TorchChore.findTorchSpotNear(level, standing, SITE_TORCH_RADIUS, batch::contains)
+                        : null;
                 if (torchSpot == null) {
                     return false;
                 }
@@ -248,6 +261,11 @@ public class MinerPlanner implements RolePlanner {
     private static boolean isStairCell(int x, int y, int z, int minX, int minZ, int topY, int maxStep) {
         int j = x - minX;
         return z == minZ && j >= 0 && j <= maxStep && topY - y == j;
+    }
+
+    /** Solid work material — not air, and not a torch we placed for our own light. */
+    private static boolean isDiggable(BlockState state) {
+        return !state.isAir() && !state.is(Blocks.TORCH) && !state.is(Blocks.WALL_TORCH);
     }
 
     private static boolean hasAdjacentFluid(ServerLevel level, BlockPos pos) {

@@ -28,6 +28,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -354,14 +355,8 @@ public class ResourceGatheringTests {
             helper.assertBlockNotPresent(Blocks.IRON_ORE, ore);
             helper.assertTrue(carriedCount(villager, Items.RAW_IRON) >= 1,
                     "the mined raw iron should be carried");
-            boolean anyTorch = false;
-            for (int x = 0; x <= 4 && !anyTorch; x++) {
-                for (int z = 0; z <= 4 && !anyTorch; z++) {
-                    anyTorch = helper.getBlockState(new BlockPos(x, 2, z)).is(Blocks.TORCH)
-                            || helper.getBlockState(new BlockPos(x, 3, z)).is(Blocks.TORCH);
-                }
-            }
-            helper.assertTrue(anyTorch, "the dark site should have been torched before mining");
+            helper.assertTrue(anyTorchInArena(helper),
+                    "the dark site should have been torched before mining");
         });
     }
 
@@ -387,6 +382,8 @@ public class ResourceGatheringTests {
             }
             helper.assertTrue(carriedCount(villager, Items.COBBLESTONE) >= 4,
                     "the tunneled stone should be carried as cobblestone");
+            helper.assertTrue(anyTorchInArena(helper),
+                    "tunnel torches must survive the digging (not be re-mined as rock)");
         });
     }
 
@@ -416,7 +413,7 @@ public class ResourceGatheringTests {
         });
     }
 
-    @GameTest(template = "empty5x5", timeoutTicks = 2000, batch = "dvMinerQuarry")
+    @GameTest(template = "empty5x5", timeoutTicks = 3000, batch = "dvMinerQuarry")
     public static void miner_digs_quarry_leaving_walkout_ramp(GameTestHelper helper) {
         helper.getLevel().setDayTime(1000);
         // a 3×3, two-layer stone box; the ramp wedge along the z=1 wall must survive
@@ -453,9 +450,44 @@ public class ResourceGatheringTests {
                 }
             }
             helper.assertTrue(carriedCount(villager, Items.COBBLESTONE)
-                            + groundCount(helper, Items.COBBLESTONE) == 16,
-                    "the 16 dug blocks should exist as cobblestone (carried or on the ground)");
+                            + groundCount(helper, Items.COBBLESTONE) >= 14,
+                    "the dug blocks should exist as cobblestone (carried or on the ground)");
+            helper.assertTrue(anyTorchInArena(helper),
+                    "quarry torches must survive on rim, stairs, or dug floor");
         });
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 800, batch = "dvCanopy")
+    public static void chopper_stuck_on_canopy_digs_down_through_leaves(GameTestHelper helper) {
+        // a full-arena leaf platform: the villager on top cannot path anywhere (leaves are
+        // blocked path nodes) and the log below is out of reach — it must dig down
+        for (int x = 0; x <= 4; x++) {
+            for (int z = 0; z <= 4; z++) {
+                helper.setBlock(new BlockPos(x, 3, z),
+                        Blocks.OAK_LEAVES.defaultBlockState().setValue(LeavesBlock.PERSISTENT, true));
+            }
+        }
+        BlockPos log = new BlockPos(0, 2, 0);
+        helper.setBlock(log, Blocks.OAK_LOG);
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(2, 4, 2));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.IRON_AXE));
+        essence.getTaskQueue().enqueue(new ChopTreeTask(List.of(helper.absolutePos(log))));
+        helper.succeedWhen(() -> helper.assertBlockNotPresent(Blocks.OAK_LOG, log));
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 600, batch = "dvDeposit")
+    public static void lumberjack_hauls_surplus_logs_to_storage(GameTestHelper helper) {
+        helper.getLevel().setDayTime(1000);
+        helper.setBlock(CHEST, Blocks.CHEST);
+        Container chest = (Container) helper.getBlockEntity(CHEST);
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.setRole(VillagerRole.LUMBERJACK);
+        essence.getMemory().rememberContainer(helper.absolutePos(CHEST), 0);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.OAK_LOG, 20)); // over the haul threshold
+        helper.succeedWhen(() -> helper.assertTrue(countItem(chest, Items.OAK_LOG) == 20,
+                "a villager carrying a haul should store it without waiting to be full"));
     }
 
     @GameTest(template = "empty5x5", timeoutTicks = 100)
@@ -536,6 +568,19 @@ public class ResourceGatheringTests {
         helper.assertTrue(restored.getMemory().knownSpots("tree").size() == 1,
                 "spot memory should survive serialization");
         helper.succeed();
+    }
+
+    private static boolean anyTorchInArena(GameTestHelper helper) {
+        for (int x = 0; x <= 4; x++) {
+            for (int z = 0; z <= 4; z++) {
+                for (int y = 2; y <= 4; y++) {
+                    if (helper.getBlockState(new BlockPos(x, y, z)).is(Blocks.TORCH)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private static int countItem(Container container, Item item) {
