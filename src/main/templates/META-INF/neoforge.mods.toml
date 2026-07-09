@@ -31,7 +31,7 @@ config="dynamicvillagers.mixins.json"
 
 # Core companion mods (see CLAUDE.md). Declared optional during early development so the
 # dev environment runs before their jars are wired in; they will become "required" once
-# integration code lands (guards -> Guard Villagers, theft -> Thief, villager QoL -> Villager Overhaul).
+# integration code lands (guards -> Guard Villagers, theft -> Thief).
 [[dependencies.${mod_id}]]
     modId="guardvillagers"
     type="optional"
@@ -43,12 +43,5 @@ config="dynamicvillagers.mixins.json"
     modId="thief"
     type="optional"
     versionRange="[1.2,)"
-    ordering="AFTER"
-    side="BOTH"
-
-[[dependencies.${mod_id}]]
-    modId="villageroverhaul"
-    type="optional"
-    versionRange="[3.10,)"
     ordering="AFTER"
     side="BOTH"

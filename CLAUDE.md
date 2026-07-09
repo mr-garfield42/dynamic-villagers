@@ -259,7 +259,8 @@ Features:
     
 - Mining
     
-- Torch placement
+- Torch placement (villagers light up dark areas around the village to prevent hostile mob
+  spawns — requested by owner 2026-07-09; light-level scan + PlaceBlockTask with torches)
     
 - Quarry generation
     
@@ -567,7 +568,6 @@ Before writing a single line of code, please review multiple sources on Minecraf
 The following mods are core dependencies and may be directly integrated:
 
 - Guard Villagers (https://modrinth.com/mod/guard-villagers) Source code: (https://github.com/seymourimadeit/guardvillagers)
-- Villager Overhaul (https://modrinth.com/mod/villager-overhaul) Source code: (https://github.com/z2six/VillagerOverhaul)
 - Thief (https://modrinth.com/mod/thief) Source code: (https://github.com/mortuusars/Thief)
 
 Do not design around these mods being absent.
@@ -583,16 +583,18 @@ Guard Villagers:
 - Use existing combat AI
 - Use existing armor/equipment systems
 
-Villager Overhaul:
-- Extend existing villager improvements
-- Avoid duplicating professions or villager mechanics
-
 Thief:
 - Use existing theft mechanics
 - React to theft events
 - Build village security and social consequences around theft
 
 Do not duplicate functionality that these mods already provide.
+
+**Villager Overhaul was removed as a companion mod (owner decision, 2026-07-09).** Its license
+forbids code reuse, it exposes no integration API, and its client rendering mixins crash dev
+environments. Do not add it back to the dev runtime or design around it. If a user runs it
+alongside anyway, its deep control only affects player-recruited villagers, so incidental
+compatibility is likely but no longer tested.
 
 You may update and modify this document with any useful information you find while researching, bug fixing, etc.
 
@@ -603,9 +605,9 @@ You may update and modify this document with any useful information you find whi
 ## Pinned versions
 - Minecraft 1.21.1, NeoForge 21.1.235, Java 21, ModDevGradle 2.0.141, Parchment 1.21/2024.11.10
 - Mod id: `dynamicvillagers`, package `com.dynamicvillagers`, MIT license
-- Companion mods (all confirmed on NeoForge 1.21.1): `guardvillagers` 2.4.11 (branch `1.21.1`,
-  NOT `main`), `thief` 1.2.3 (GPL-3.0 — never copy code, events only), `villageroverhaul` 3.10.x
-  (source-available license — learn-only, never copy code or assets)
+- Companion mods (all confirmed on NeoForge 1.21.1): `guardvillagers` 2.4.x (branch `1.21.1`,
+  NOT `main`), `thief` 1.2.x (GPL-3.0 — never copy code, events only). Villager Overhaul was
+  dropped 2026-07-09 (see Mod Dependencies section).
 
 ## Key integration points
 - Thief fires NeoForge bus events: `CrimeCommitedEvent`, `GiftGivenEvent`,
@@ -617,10 +619,6 @@ You may update and modify this document with any useful information you find whi
   (verified 2026-07-09; cost a debugging session). Instead inject at TAIL of
   `Villager.registerBrainGoals` and call `Brain.addActivity(Activity.CORE, ...)` — appends
   safely, survives brain rebuilds, composes with GV/VO/Thief.
-- Villager Overhaul gates the vanilla villager Brain **only for player-recruited villagers**
-  (`@WrapWithCondition` on `Brain.tick` in `Villager.customServerAiStep`). Rule: Dynamic
-  Villagers drives unrecruited villagers; VO owns recruited ones. Keeping our AI in the Brain
-  means VO's gate pauses us automatically.
 - Architecture decision (Phase 1): enhance vanilla `minecraft:villager` (no custom entity);
   per-villager state in one codec-serialized NeoForge data attachment; village-level state in
   `SavedData`. See docs/PHASE1_PLAN.md.

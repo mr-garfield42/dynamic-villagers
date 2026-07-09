@@ -1,11 +1,9 @@
 package com.dynamicvillagers.mixin;
 
-import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.behavior.EatFoodBehavior;
 import com.dynamicvillagers.villager.behavior.ExecuteTaskBehavior;
 import com.dynamicvillagers.villager.behavior.SeekFoodItemBehavior;
 import com.google.common.collect.ImmutableList;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.ai.Brain;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.schedule.Activity;
@@ -35,20 +33,18 @@ public abstract class VillagerMixin {
     }
 
     /**
-     * Vanilla villagers only pick up profession-wanted items (bread, seeds, ...). A hungry
-     * villager should grab any food it can carry; the vanilla pickup path in Mob#aiStep does
-     * the rest once this returns true.
+     * Vanilla villagers only pick up profession-wanted items (bread, seeds, ...). Ours accept
+     * anything they have room for, like a player would — the vanilla pickup path in Mob#aiStep
+     * does the rest once this returns true. They still only *walk toward* dropped food
+     * (SeekFoodItemBehavior); other items are grabbed only when already within arm's reach.
      */
-
     @Inject(method = "wantsToPickUp", at = @At("RETURN"), cancellable = true)
-    private void dynamicvillagers$wantsAnyFoodWhenHungry(ItemStack stack, CallbackInfoReturnable<Boolean> cir) {
+    private void dynamicvillagers$wantsAnyCarriableItem(ItemStack stack, CallbackInfoReturnable<Boolean> cir) {
         if (cir.getReturnValueZ()) {
             return;
         }
         Villager self = (Villager) (Object) this;
-        if (stack.has(DataComponents.FOOD)
-                && VillagerEssence.get(self).getHunger() < EatFoodBehavior.HUNGER_THRESHOLD
-                && self.getInventory().canAddItem(stack)) {
+        if (self.getInventory().canAddItem(stack)) {
             cir.setReturnValue(true);
         }
     }

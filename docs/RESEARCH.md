@@ -70,6 +70,10 @@ neo 21.1.215.
 
 ### Villager Overhaul (`villageroverhaul` v3.10.x, custom source-available license, by z2six)
 
+> **Removed as a companion mod 2026-07-09 (owner decision).** License forbids code reuse, no
+> integration API, and its rendering mixins crash dev-environment clients. Section kept for
+> reference; the coexistence facts below are no longer maintained.
+
 NeoForge-only in practice (1.21.1+). **Much larger than its store description**: ~400 source
 files. Already implements (player-directed): villager inventory + inventory screen, recruiting,
 combat modes with equipment, patrol routes, manual farming with registered workstation/deposit

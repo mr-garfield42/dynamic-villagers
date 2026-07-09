@@ -9,8 +9,8 @@ import net.minecraft.world.entity.ai.behavior.Behavior;
 import net.minecraft.world.entity.npc.Villager;
 
 /**
- * Ticks the head of the villager's task queue. Interruptions (sleep, panic, brain gating by
- * Villager Overhaul) stop the behavior but leave the queue intact, so work resumes after.
+ * Ticks the head of the villager's task queue. Interruptions (sleep, panic, other mods
+ * suspending the brain) stop the behavior but leave the queue intact, so work resumes after.
  */
 public class ExecuteTaskBehavior extends Behavior<Villager> {
     private static final int MAX_DURATION = 1200;

@@ -18,6 +18,8 @@ import java.util.Comparator;
  * and eating through EatFoodBehavior — this behavior only closes the distance.
  */
 public class SeekFoodItemBehavior extends Behavior<Villager> {
+    /** Walking somewhere for food is only worth it when actually hungry (topping off is not). */
+    public static final int SEEK_HUNGER_THRESHOLD = 12;
     private static final double SCAN_RADIUS = 16.0;
     private static final int SCAN_INTERVAL_TICKS = 40;
     private static final int MAX_DURATION = 400;
@@ -36,7 +38,7 @@ public class SeekFoodItemBehavior extends Behavior<Villager> {
             return false;
         }
         VillagerEssence essence = VillagerEssence.get(villager);
-        if (essence.getHunger() >= EatFoodBehavior.HUNGER_THRESHOLD
+        if (essence.getHunger() >= SEEK_HUNGER_THRESHOLD
                 || essence.findFoodSlot(villager) != null
                 || !essence.getTaskQueue().isEmpty() // assigned work takes precedence over foraging
                 || villager.tickCount % SCAN_INTERVAL_TICKS != 0) {
@@ -64,7 +66,7 @@ public class SeekFoodItemBehavior extends Behavior<Villager> {
     @Override
     protected boolean canStillUse(ServerLevel level, Villager villager, long gameTime) {
         return target != null && target.isAlive() && !villager.isSleeping()
-                && VillagerEssence.get(villager).getHunger() < EatFoodBehavior.HUNGER_THRESHOLD;
+                && VillagerEssence.get(villager).getHunger() < SEEK_HUNGER_THRESHOLD;
     }
 
     @Override

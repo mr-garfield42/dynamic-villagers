@@ -13,11 +13,13 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -112,7 +114,9 @@ public class VillagerFrameworkTests {
         essence.getTaskQueue().enqueue(new BreakBlockTask(helper.absolutePos(target)));
         helper.succeedWhen(() -> {
             helper.assertBlockNotPresent(Blocks.STONE, target);
-            helper.assertItemEntityPresent(Items.COBBLESTONE, target, 3.0);
+            // villagers pick up nearby drops, so the cobble may be on the ground or carried
+            helper.assertTrue(totalItemCount(helper, villager, target, Items.COBBLESTONE) == 1,
+                    "mining should have produced one cobblestone (ground or carried)");
             helper.assertTrue(essence.getExtraInventory().getItem(0).getDamageValue() > 0,
                     "pickaxe should have lost durability");
         });
@@ -164,7 +168,9 @@ public class VillagerFrameworkTests {
         helper.succeedWhen(() -> {
             helper.assertTrue(essence.getTaskQueue().isEmpty(), "both tasks should have completed");
             helper.assertBlockNotPresent(Blocks.COBBLESTONE, target);
-            helper.assertItemEntityPresent(Items.COBBLESTONE, target, 3.0); // placed, then mined back off
+            // placed, then mined back off; the drop may have been auto-picked-up
+            helper.assertTrue(totalItemCount(helper, villager, target, Items.COBBLESTONE) == 1,
+                    "the placed-then-mined cobblestone should exist (ground or carried)");
         });
     }
 
@@ -231,6 +237,51 @@ public class VillagerFrameworkTests {
             }
         }
         return count;
+    }
+
+    /** Item total across ground drops near a position and the villager's combined inventory. */
+    private static int totalItemCount(GameTestHelper helper, Villager villager, BlockPos aroundRelative, Item item) {
+        int onGround = helper.getLevel()
+                .getEntitiesOfClass(ItemEntity.class, new AABB(helper.absolutePos(aroundRelative)).inflate(4.0),
+                        entity -> entity.getItem().is(item))
+                .stream().mapToInt(entity -> entity.getItem().getCount()).sum();
+        return onGround
+                + countItem(villager.getInventory(), item)
+                + countItem(VillagerEssence.get(villager).getExtraInventory(), item);
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 200)
+    public static void picks_up_any_dropped_item_nearby(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        helper.spawnItem(Items.IRON_PICKAXE, 2.5F, 2.5F, 2.5F);
+        helper.succeedWhen(() -> helper.assertTrue(
+                countItem(villager.getInventory(), Items.IRON_PICKAXE) == 1,
+                "villager should pick up any item dropped at its feet"));
+    }
+
+    @GameTest(template = "empty5x5")
+    public static void does_not_walk_to_non_food_items(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(3, 2, 3));
+        VillagerEssence.get(villager).setHunger(5); // hungry — but pickaxes are not food
+        helper.spawnItem(Items.IRON_PICKAXE, 0.5F, 2.5F, 0.5F);
+        helper.runAfterDelay(80, () -> {
+            helper.assertItemEntityPresent(Items.IRON_PICKAXE, new BlockPos(0, 2, 0), 2.0);
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 200)
+    public static void tops_off_hunger_when_food_available(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.setHunger(15); // above the old "only when starving" threshold
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.BREAD, 3));
+        helper.succeedWhen(() -> {
+            helper.assertTrue(VillagerEssence.get(villager).getHunger() == VillagerEssence.MAX_HUNGER,
+                    "villager should eat itself back to full");
+            helper.assertTrue(essence.getExtraInventory().getItem(0).getCount() == 2,
+                    "exactly one bread should have been eaten (15 + 5 = 20)");
+        });
     }
 
     @GameTest(template = "empty5x5")
