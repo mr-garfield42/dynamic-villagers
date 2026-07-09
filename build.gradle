@@ -148,6 +148,7 @@ dependencies {
     localRuntime 'maven.modrinth:guard-villagers:PR6QZtjY'    // 2.4.10, NeoForge 1.21.1
     localRuntime 'maven.modrinth:thief:jvvQVgqv'              // 1.2.2.1, NeoForge 1.21.1
     localRuntime 'maven.modrinth:villager-overhaul:Z9nioxrI'  // 3.10.17.16, NeoForge 1.21.1
+    localRuntime 'maven.modrinth:ez-actions:z7npcqAM'         // 2.0.3.5 — VO's required client-side library
 
     // For more info:
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html

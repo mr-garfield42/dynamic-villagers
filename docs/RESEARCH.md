@@ -86,6 +86,10 @@ chests, storage-deposit goal, teachable "custom commands", family trees, stats/X
   goal selector that vanilla itself barely uses, so mods can use it.
 - License: source-available, learn-only for us. **Do not copy code** (attribution + ARR assets).
   No useful public API for our purposes (its `api` package is render-related).
+- **Runtime dependencies of VO itself**: requires `ezactions` (Modrinth slug `ez-actions`,
+  also by Z2SIX) `[2.0.1.7,)` on the **client side only** — a headless server/gametest run
+  loads VO fine without it, but a client refuses to start. Optional: `ezemeraldpouch`.
+  Any instance running VO needs EzActions installed alongside it.
 
 ### Coexistence rules derived from the above
 
