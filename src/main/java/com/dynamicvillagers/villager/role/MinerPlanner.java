@@ -40,6 +40,7 @@ public class MinerPlanner implements RolePlanner {
     private static final int SCAN_HEIGHT = 6;
     private static final int MAX_SPOTS = 8;
     private static final int MAX_ORES_PER_CYCLE = 3;
+    private static final int MAX_QUARRY_BLOCKS_PER_CYCLE = 6;
     private static final int FETCH_COOLDOWN = 1200;
     private static final int TORCH_FETCH_COUNT = 8;
     private static final int SITE_TORCH_RADIUS = 3;
@@ -102,6 +103,17 @@ public class MinerPlanner implements RolePlanner {
             }
         }
 
+        if (essence.getQuarrySite() != null) {
+            Boolean quarry = planQuarryBatch(level, villager, essence, queue, hasTorches);
+            if (quarry != null) {
+                if (!quarry) {
+                    fearedDarkSite = true; // dark pit, no torches
+                } else {
+                    return true;
+                }
+            }
+        }
+
         if (fearedDarkSite && !hasTorches
                 && fetchWithCooldown(level, essence, TorchChore.TORCH_FILTER, TORCH_FETCH_COUNT)) {
             return true; // go get torches, then face the dark
@@ -149,6 +161,93 @@ public class MinerPlanner implements RolePlanner {
             return true;
         }
         return null; // tunnel complete
+    }
+
+    /**
+     * Enqueues the next batch of quarry work. Dig phase: topmost unfinished layer, skipping
+     * the stair-line cells along the cornerA-side wall (one step down per column — vanilla
+     * villagers cannot climb ladders, so the pit must always be exitable on foot). Build
+     * phase: any stair cell that got lost along the way (obstruction clearing is allowed to
+     * mine through it) is rebuilt with carried cobblestone, deepest step first, so a miner at
+     * the pit bottom builds its own way out. Same contract as planTunnelSegment: true = work
+     * enqueued, false = too dark without torches, null = nothing to do (done/fluid hazard).
+     */
+    private static Boolean planQuarryBatch(ServerLevel level, Villager villager,
+                                           VillagerEssence essence, TaskQueue queue, boolean hasTorches) {
+        VillagerEssence.QuarrySite site = essence.getQuarrySite();
+        int minX = Math.min(site.cornerA().getX(), site.cornerB().getX());
+        int maxX = Math.max(site.cornerA().getX(), site.cornerB().getX());
+        int minZ = Math.min(site.cornerA().getZ(), site.cornerB().getZ());
+        int maxZ = Math.max(site.cornerA().getZ(), site.cornerB().getZ());
+        int topY = Math.max(site.cornerA().getY(), site.cornerB().getY());
+        // one step down per stair column, so depth is capped by the stair wall length
+        int bottomY = Math.max(Math.min(site.cornerA().getY(), site.cornerB().getY()),
+                topY - (maxX - minX) - 1);
+        int maxStep = Math.min(topY - bottomY, maxX - minX);
+
+        // dig phase
+        for (int y = topY; y >= bottomY; y--) {
+            List<BlockPos> digs = new ArrayList<>();
+            for (int x = minX; x <= maxX; x++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    if (isStairCell(x, y, z, minX, minZ, topY, maxStep)) {
+                        continue;
+                    }
+                    BlockPos pos = new BlockPos(x, y, z);
+                    if (!level.getBlockState(pos).isAir()) {
+                        digs.add(pos);
+                    }
+                }
+            }
+            if (digs.isEmpty()) {
+                continue; // layer finished — go one deeper
+            }
+            List<BlockPos> batch = digs.subList(0, Math.min(MAX_QUARRY_BLOCKS_PER_CYCLE, digs.size()));
+            for (BlockPos pos : batch) {
+                if (hasAdjacentFluid(level, pos)) {
+                    return null; // fluid in the pit wall — stop before breaching it
+                }
+            }
+            BlockPos standing = batch.getFirst().above();
+            if (level.getBrightness(LightLayer.BLOCK, standing) < TorchChore.MIN_SAFE_BLOCK_LIGHT) {
+                BlockPos torchSpot = hasTorches
+                        ? TorchChore.findTorchSpotNear(level, standing, SITE_TORCH_RADIUS) : null;
+                if (torchSpot == null) {
+                    return false;
+                }
+                queue.enqueue(new PlaceBlockTask(torchSpot, TorchChore.TORCH_FILTER));
+            }
+            for (BlockPos pos : batch) {
+                queue.enqueue(new BreakBlockTask(pos));
+            }
+            queue.enqueue(new PickUpItemsTask(batch.getFirst(), PICKUP_RADIUS));
+            return true;
+        }
+
+        // build phase: repair the staircase, deepest step first
+        for (int j = maxStep; j >= 0; j--) {
+            BlockPos step = new BlockPos(minX + j, topY - j, minZ);
+            BlockState state = level.getBlockState(step);
+            if (state.isFaceSturdy(level, step, Direction.UP)) {
+                continue; // step stands (original stone or rebuilt cobble)
+            }
+            if (!state.isAir() && !state.canBeReplaced()) {
+                queue.enqueue(new BreakBlockTask(step)); // e.g. a torch squatting on the step
+                return true;
+            }
+            if (!essence.hasItem(villager, ItemFilter.parse("item:minecraft:cobblestone"))) {
+                // deposited the cobble already? get some back for the stairs
+                return fetchWithCooldown(level, essence, "item:minecraft:cobblestone", 8) ? true : null;
+            }
+            queue.enqueue(new PlaceBlockTask(step, "item:minecraft:cobblestone"));
+            return true;
+        }
+        return null; // quarry complete, staircase intact
+    }
+
+    private static boolean isStairCell(int x, int y, int z, int minX, int minZ, int topY, int maxStep) {
+        int j = x - minX;
+        return z == minZ && j >= 0 && j <= maxStep && topY - y == j;
     }
 
     private static boolean hasAdjacentFluid(ServerLevel level, BlockPos pos) {

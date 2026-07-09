@@ -32,10 +32,16 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
     public record MineSite(BlockPos start, Direction direction) {
     }
 
+    /** A designated quarry pit: the box spanned by two corners, dug layer by layer. */
+    public record QuarrySite(BlockPos cornerA, BlockPos cornerB) {
+    }
+
     private int hunger = MAX_HUNGER;
     private VillagerRole role = VillagerRole.NONE;
     @Nullable
     private MineSite mineSite;
+    @Nullable
+    private QuarrySite quarrySite;
     private final SimpleContainer extraInventory = new SimpleContainer(EXTRA_SLOTS);
     private final VillagerMemory memory = new VillagerMemory();
     private final TaskQueue taskQueue = new TaskQueue();
@@ -92,6 +98,15 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
 
     public void setMineSite(@Nullable MineSite mineSite) {
         this.mineSite = mineSite;
+    }
+
+    @Nullable
+    public QuarrySite getQuarrySite() {
+        return quarrySite;
+    }
+
+    public void setQuarrySite(@Nullable QuarrySite quarrySite) {
+        this.quarrySite = quarrySite;
     }
 
     public long getNextTorchFetchTime() {
@@ -202,6 +217,12 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
             site.putString("d", mineSite.direction().getName());
             tag.put("mine_site", site);
         }
+        if (quarrySite != null) {
+            CompoundTag site = new CompoundTag();
+            site.putLong("a", quarrySite.cornerA().asLong());
+            site.putLong("b", quarrySite.cornerB().asLong());
+            tag.put("quarry_site", site);
+        }
         tag.put("extra_inventory", extraInventory.createTag(provider));
         tag.put("memory_containers", memory.save());
         tag.put("memory_spots", memory.saveSpots());
@@ -221,6 +242,11 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
             if (direction != null) {
                 mineSite = new MineSite(BlockPos.of(site.getLong("p")), direction);
             }
+        }
+        quarrySite = null;
+        if (tag.contains("quarry_site")) {
+            CompoundTag site = tag.getCompound("quarry_site");
+            quarrySite = new QuarrySite(BlockPos.of(site.getLong("a")), BlockPos.of(site.getLong("b")));
         }
         extraInventory.fromTag(tag.getList("extra_inventory", Tag.TAG_COMPOUND), provider);
         memory.load(tag.getList("memory_containers", Tag.TAG_COMPOUND));

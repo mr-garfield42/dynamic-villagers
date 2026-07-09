@@ -26,8 +26,17 @@ Status: **in progress** (started 2026-07-09).
   dirt next to remaining farmland with water in range — exactly what the 2.3 till rule
   targets. Only a *fully* trampled farm (no farmland left to be adjacent to) is not
   recovered; that needs remembered farm plots — deferred to the village-manager phase.
-- Remaining: 2.6 quarry (+ ladder shafts, moved there from 2.5), 2.7 phase gate
-  (50-villager perf benchmark + manual coexistence session).
+- 2.6 (quarry) done 2026-07-09. **Design decision — ramp, not ladders**: vanilla villager
+  pathfinding cannot intentionally climb ladders, so a laddered pit would strand miners.
+  Quarries instead keep a walk-out staircase (one step down per column along the cornerA
+  wall; depth capped by wall length). The dig phase skips the stair cells, and a build phase
+  repairs any step lost to obstruction-clearing with carried cobblestone (fetching some back
+  from storage if it was already deposited) — deepest step first, so a miner at the bottom
+  builds its own way out. `/dv quarry <villager> <corner1> <corner2>` (sides ≤ 32; `clear`).
+  Also fixed alongside: Break/PlaceBlockTask now have give-up timers so machine-chosen
+  unreachable targets can't stall the queue forever. Bridge planks deferred to Phase 4
+  (construction), where scaffolding/support building lands anyway.
+- Remaining: 2.7 phase gate (50-villager perf benchmark + manual coexistence session).
 - Findings while testing:
   - The GameTest framework encases each running test in a **barrier cage**. Barriers are
     motion-blocking (they cap the heightmap — the cage ceiling, not the tree, is the
@@ -130,10 +139,10 @@ Status: **in progress** (started 2026-07-09).
   rule** (owner request): the face must be lit ≥ 8 or the miner places a carried torch
   first — no torches means no deep digging. Ladder shafts moved to 2.6.
 
-### 2.6 Quarry
-- Designated rectangular pit dug layer by layer, ladder access on a wall, plank bridges
-  across the pit when a layer's far side is unreachable (basic bridge construction lands
-  here). Produces bulk stone for Phase 4 construction.
+### 2.6 Quarry — *done*
+- Designated rectangular pit dug layer by layer with a walk-out staircase along one wall
+  (see status notes: ramp instead of ladders, dig-then-repair stairs). Produces bulk stone
+  for Phase 4 construction. Bridge construction deferred to Phase 4.
 
 ### 2.7 Phase gate
 - Perf: 50 villagers with active gathering roles on a dedicated server — measure tick cost of

@@ -72,6 +72,13 @@ public final class DVCommands {
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
                                                         java.util.List.of("north", "south", "east", "west"), builder))
                                                 .executes(DVCommands::setMineSite)))))
+                .then(Commands.literal("quarry")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .then(Commands.literal("clear")
+                                        .executes(DVCommands::clearQuarry))
+                                .then(Commands.argument("corner1", BlockPosArgument.blockPos())
+                                        .then(Commands.argument("corner2", BlockPosArgument.blockPos())
+                                                .executes(DVCommands::setQuarry)))))
                 .then(Commands.literal("take")
                         .then(Commands.argument("target", EntityArgument.entity())
                                 .then(Commands.argument("filter", StringArgumentType.word())
@@ -98,11 +105,13 @@ public final class DVCommands {
         Villager villager = requireVillager(ctx);
         VillagerEssence essence = VillagerEssence.get(villager);
         ctx.getSource().sendSuccess(() -> Component.literal(
-                "%s | role %s | hunger %d/%d | %d tasks | knows %d containers, %d trees".formatted(
+                "%s | role %s | hunger %d/%d | %d tasks | knows %d containers, %d trees%s%s".formatted(
                         villager.getName().getString(), essence.getRole().lowerName(),
                         essence.getHunger(), VillagerEssence.MAX_HUNGER,
                         essence.getTaskQueue().size(), essence.getMemory().knownContainers().size(),
-                        essence.getMemory().knownSpots("tree").size())), false);
+                        essence.getMemory().knownSpots("tree").size(),
+                        essence.getMineSite() != null ? " | mine site" : "",
+                        essence.getQuarrySite() != null ? " | quarry" : "")), false);
         sendInventory(ctx, "vanilla", villager.getInventory());
         sendInventory(ctx, "extra", essence.getExtraInventory());
         return 1;
@@ -171,6 +180,28 @@ public final class DVCommands {
         Villager villager = requireVillager(ctx);
         VillagerEssence.get(villager).setMineSite(null);
         ctx.getSource().sendSuccess(() -> Component.literal("mine site cleared"), false);
+        return 1;
+    }
+
+    private static int setQuarry(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        BlockPos a = BlockPosArgument.getLoadedBlockPos(ctx, "corner1");
+        BlockPos b = BlockPosArgument.getLoadedBlockPos(ctx, "corner2");
+        if (Math.abs(a.getX() - b.getX()) > 32 || Math.abs(a.getZ() - b.getZ()) > 32) {
+            ctx.getSource().sendFailure(Component.literal("quarry sides are limited to 32 blocks"));
+            return 0;
+        }
+        VillagerEssence.get(villager).setQuarrySite(new VillagerEssence.QuarrySite(a, b));
+        ctx.getSource().sendSuccess(() -> Component.literal(
+                "quarry set: %s to %s (depth is capped by the ramp wall length)".formatted(
+                        a.toShortString(), b.toShortString())), false);
+        return 1;
+    }
+
+    private static int clearQuarry(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        VillagerEssence.get(villager).setQuarrySite(null);
+        ctx.getSource().sendSuccess(() -> Component.literal("quarry cleared"), false);
         return 1;
     }
 

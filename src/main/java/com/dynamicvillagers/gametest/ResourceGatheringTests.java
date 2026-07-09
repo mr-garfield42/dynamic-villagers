@@ -408,6 +408,48 @@ public class ResourceGatheringTests {
         });
     }
 
+    @GameTest(template = "empty5x5", timeoutTicks = 2000, batch = "dvMinerQuarry")
+    public static void miner_digs_quarry_leaving_walkout_ramp(GameTestHelper helper) {
+        helper.getLevel().setDayTime(1000);
+        // a 3×3, two-layer stone box; the ramp wedge along the z=1 wall must survive
+        for (int x = 1; x <= 3; x++) {
+            for (int z = 1; z <= 3; z++) {
+                helper.setBlock(new BlockPos(x, 2, z), Blocks.STONE);
+                helper.setBlock(new BlockPos(x, 3, z), Blocks.STONE);
+            }
+        }
+        // the walk-out staircase: one step down per column along the z=1 wall
+        List<BlockPos> stairs = List.of(new BlockPos(1, 3, 1), new BlockPos(2, 2, 1));
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(2, 2, 4));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.setRole(VillagerRole.MINER);
+        essence.setQuarrySite(new VillagerEssence.QuarrySite(
+                helper.absolutePos(new BlockPos(1, 3, 1)), helper.absolutePos(new BlockPos(3, 2, 3))));
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.STONE_PICKAXE));
+        essence.getExtraInventory().setItem(1, new ItemStack(Items.TORCH, 8));
+        helper.succeedWhen(() -> {
+            for (int x = 1; x <= 3; x++) {
+                for (int z = 1; z <= 3; z++) {
+                    for (int y = 2; y <= 3; y++) {
+                        BlockPos pos = new BlockPos(x, y, z);
+                        if (stairs.contains(pos)) {
+                            helper.assertTrue(helper.getBlockState(pos).isFaceSturdy(
+                                            helper.getLevel(), helper.absolutePos(pos), Direction.UP),
+                                    "stair step at " + pos + " must stand (stone or rebuilt cobble)");
+                        } else {
+                            helper.assertTrue(!helper.getBlockState(pos).is(Blocks.STONE)
+                                            && !helper.getBlockState(pos).is(Blocks.COBBLESTONE),
+                                    "non-stair cell at " + pos + " should be dug out");
+                        }
+                    }
+                }
+            }
+            helper.assertTrue(carriedCount(villager, Items.COBBLESTONE)
+                            + groundCount(helper, Items.COBBLESTONE) == 16,
+                    "the 16 dug blocks should exist as cobblestone (carried or on the ground)");
+        });
+    }
+
     @GameTest(template = "empty5x5", timeoutTicks = 200)
     public static void killed_villager_drops_everything_carried(GameTestHelper helper) {
         Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);

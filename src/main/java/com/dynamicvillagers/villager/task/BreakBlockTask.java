@@ -10,8 +10,10 @@ import net.minecraft.world.entity.npc.Villager;
 
 public class BreakBlockTask implements Task {
     public static final String TYPE = "break_block";
+    private static final int GIVE_UP_TICKS = 1200; // an unreachable target must not stall the queue
 
     private final BreakBlockOrder order;
+    private int ticksRun;
 
     public BreakBlockTask(BlockPos pos) {
         this.order = new BreakBlockOrder(pos);
@@ -24,6 +26,10 @@ public class BreakBlockTask implements Task {
 
     @Override
     public Status tick(ServerLevel level, Villager villager) {
+        if (++ticksRun > GIVE_UP_TICKS) {
+            order.abort(level, villager);
+            return Status.FAILED;
+        }
         if (!WorkHelper.moveIntoReachAndLook(villager, order.pos())) {
             return Status.IN_PROGRESS;
         }
