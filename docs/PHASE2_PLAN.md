@@ -36,7 +36,23 @@ Status: **in progress** (started 2026-07-09).
   Also fixed alongside: Break/PlaceBlockTask now have give-up timers so machine-chosen
   unreachable targets can't stall the queue forever. Bridge planks deferred to Phase 4
   (construction), where scaffolding/support building lands anyway.
-- Remaining: 2.7 phase gate (50-villager perf benchmark + manual coexistence session).
+- Torch chore fixes (owner bug report with screenshot, 2026-07-09): one torch per plan cycle
+  (batched placements ignored the light of the torch just placed → adjacent clusters) and a
+  village anchor (bell → bed → self, radius 24) so a torch-stocked villager no longer walks a
+  hundred blocks torching wilderness (the scan used to re-center on the villager each cycle,
+  dragging it outward forever).
+- Creative designation markers (owner request): **Mine Site Marker** and **Quarry Marker**
+  (Tools tab). Right-click a villager to bind the marker, then click blocks: mine marker =
+  tunnel start heading the way the player faces; quarry marker = two corners (sneak-click
+  resets a half-placed corner). Designating a site auto-assigns the MINER role. Requires
+  creative or permission 2.
+- 2.7 benchmark done 2026-07-09 (kept as gametests `PerformanceBenchmarks`, own batches):
+  50 villagers in a barren arena, all planners failing into full-scan backoff — the most
+  expensive idle path. **Baseline 50 plain villagers: 2.011 ms/tick; 50 idle lumberjacks:
+  2.332 ms/tick → ~0.32 ms/tick of mod overhead for 50 workers ≈ 6 µs per villager per
+  tick.** No budgeting needed at Phase 2 scale.
+- Remaining: 2.7 manual coexistence session (owner + dev client: convert a lumberjack to
+  guard mid-chop, steal from a working villager, markers/GUI smoke test).
 - Findings while testing:
   - The GameTest framework encases each running test in a **barrier cage**. Barriers are
     motion-blocking (they cap the heightmap — the cage ceiling, not the tree, is the

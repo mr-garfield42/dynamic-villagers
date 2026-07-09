@@ -1,6 +1,8 @@
 package com.dynamicvillagers.gametest;
 
 import com.dynamicvillagers.DynamicVillagers;
+import com.dynamicvillagers.item.DVItems;
+import com.dynamicvillagers.item.SiteMarkerItem;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.role.VillagerRole;
 import com.dynamicvillagers.villager.task.BreakBlockTask;
@@ -15,14 +17,20 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.Container;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -447,6 +455,54 @@ public class ResourceGatheringTests {
             helper.assertTrue(carriedCount(villager, Items.COBBLESTONE)
                             + groundCount(helper, Items.COBBLESTONE) == 16,
                     "the 16 dug blocks should exist as cobblestone (carried or on the ground)");
+        });
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 100)
+    public static void mine_marker_designates_tunnel_for_bound_villager(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        ItemStack marker = new ItemStack(DVItems.MINE_MARKER.get());
+        SiteMarkerItem.bind(marker, villager);
+        player.setItemInHand(InteractionHand.MAIN_HAND, marker);
+        BlockPos target = helper.absolutePos(new BlockPos(1, 2, 1));
+        helper.runAfterDelay(5, () -> {
+            marker.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND,
+                    new BlockHitResult(Vec3.atCenterOf(target), Direction.UP, target, false)));
+            VillagerEssence essence = VillagerEssence.get(villager);
+            helper.assertTrue(essence.getMineSite() != null
+                            && essence.getMineSite().start().equals(target),
+                    "the mine site should start at the clicked block");
+            helper.assertTrue(essence.getRole() == VillagerRole.MINER,
+                    "designating a mine site should give the villager the miner role");
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 100)
+    public static void quarry_marker_designates_pit_from_two_corners(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        ItemStack marker = new ItemStack(DVItems.QUARRY_MARKER.get());
+        SiteMarkerItem.bind(marker, villager);
+        player.setItemInHand(InteractionHand.MAIN_HAND, marker);
+        BlockPos cornerA = helper.absolutePos(new BlockPos(1, 2, 1));
+        BlockPos cornerB = helper.absolutePos(new BlockPos(3, 2, 3));
+        helper.runAfterDelay(5, () -> {
+            marker.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND,
+                    new BlockHitResult(Vec3.atCenterOf(cornerA), Direction.UP, cornerA, false)));
+            VillagerEssence essence = VillagerEssence.get(villager);
+            helper.assertTrue(essence.getQuarrySite() == null,
+                    "one corner alone must not designate a quarry yet");
+            marker.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND,
+                    new BlockHitResult(Vec3.atCenterOf(cornerB), Direction.UP, cornerB, false)));
+            helper.assertTrue(essence.getQuarrySite() != null
+                            && essence.getQuarrySite().cornerA().equals(cornerA)
+                            && essence.getQuarrySite().cornerB().equals(cornerB),
+                    "both corners should designate the quarry");
+            helper.assertTrue(essence.getRole() == VillagerRole.MINER,
+                    "designating a quarry should give the villager the miner role");
+            helper.succeed();
         });
     }
 

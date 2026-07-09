@@ -7,6 +7,8 @@ import com.dynamicvillagers.villager.work.ItemFilter;
 import com.dynamicvillagers.villager.work.WorkHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.LightLayer;
@@ -25,20 +27,26 @@ import java.util.List;
  * spawn, but players light to 8+ for margin — and it keeps torch coverage looking deliberate),
  * and the villager can actually see it from where it stands (no torching caves through
  * walls). Torches come from the carried inventory, fetched from remembered containers.
+ *
+ * Two rules keep this sane (owner bug report, 2026-07-09):
+ * one torch per plan cycle, so the next scan sees the light the last torch actually casts
+ * (batching placed clusters of redundant torches); and spots must be near the village
+ * anchor — the bell if known, else the villager's bed, else where it stands — so a villager
+ * with a full stack doesn't wander off torching a hundred blocks of wilderness.
  */
 public final class TorchChore {
     public static final String TORCH_FILTER = "item:minecraft:torch";
     public static final int SCAN_RADIUS = 10;
     public static final int MIN_SAFE_BLOCK_LIGHT = 8;
+    public static final int ANCHOR_RANGE = 24;
     private static final int DESCENT_DEPTH = 10;
-    private static final int MAX_PLACEMENTS_PER_CYCLE = 3;
     private static final int MAX_SPOTS = 8;
     private static final int FETCH_COOLDOWN = 1200;
     private static final int FETCH_COUNT = 8;
 
     /** @return true if tasks were enqueued. Call from planners when there is no primary work. */
     public static boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
-        List<BlockPos> spots = findDarkSpots(level, villager);
+        List<BlockPos> spots = findDarkSpots(level, villager, resolveAnchor(level, villager));
         if (spots.isEmpty()) {
             return false;
         }
@@ -51,10 +59,21 @@ public final class TorchChore {
             essence.setNextTorchFetchTime(now + FETCH_COOLDOWN);
             essence.getTaskQueue().enqueue(new TakeItemsTask(TORCH_FILTER, FETCH_COUNT));
         }
-        for (BlockPos spot : spots.subList(0, Math.min(MAX_PLACEMENTS_PER_CYCLE, spots.size()))) {
-            essence.getTaskQueue().enqueue(new PlaceBlockTask(spot, TORCH_FILTER));
-        }
+        // one torch per cycle: the next scan sees this torch's light and spaces the next
+        // one honestly, instead of committing to a batch of spots that were all dark at once
+        essence.getTaskQueue().enqueue(new PlaceBlockTask(spots.getFirst(), TORCH_FILTER));
         return true;
+    }
+
+    /** Where "around the village" is measured from: bell, else bed, else the villager. */
+    private static BlockPos resolveAnchor(ServerLevel level, Villager villager) {
+        return villager.getBrain().getMemory(MemoryModuleType.MEETING_POINT)
+                .filter(globalPos -> globalPos.dimension() == level.dimension())
+                .map(GlobalPos::pos)
+                .or(() -> villager.getBrain().getMemory(MemoryModuleType.HOME)
+                        .filter(globalPos -> globalPos.dimension() == level.dimension())
+                        .map(GlobalPos::pos))
+                .orElse(villager.blockPosition());
     }
 
     /** Nearest spot within radius of center where a torch can stand, in the dark, or null. */
@@ -78,7 +97,7 @@ public final class TorchChore {
         return best;
     }
 
-    private static List<BlockPos> findDarkSpots(ServerLevel level, Villager villager) {
+    private static List<BlockPos> findDarkSpots(ServerLevel level, Villager villager, BlockPos anchor) {
         List<BlockPos> spots = new ArrayList<>();
         BlockPos origin = villager.blockPosition();
         for (int dx = -SCAN_RADIUS; dx <= SCAN_RADIUS && spots.size() < MAX_SPOTS; dx++) {
@@ -94,7 +113,8 @@ public final class TorchChore {
                 for (int y = surfaceY; y > surfaceY - DESCENT_DEPTH; y--) {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockPos below = pos.below();
-                    if (level.getBlockState(pos).isAir()
+                    if (pos.distSqr(anchor) <= (double) ANCHOR_RANGE * ANCHOR_RANGE
+                            && level.getBlockState(pos).isAir()
                             && level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)
                             && level.getBrightness(LightLayer.BLOCK, pos) < MIN_SAFE_BLOCK_LIGHT
                             && WorkHelper.findObstruction(level, villager, pos) == null) {

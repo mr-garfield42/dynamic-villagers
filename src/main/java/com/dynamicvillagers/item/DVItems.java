@@ -19,10 +19,16 @@ public final class DVItems {
 
     public static final DeferredItem<Item> DEBUG_WAND =
             ITEMS.registerSimpleItem("debug_wand", new Item.Properties().stacksTo(1));
+    public static final DeferredItem<Item> MINE_MARKER =
+            ITEMS.register("mine_marker", () -> new MineMarkerItem(new Item.Properties().stacksTo(1)));
+    public static final DeferredItem<Item> QUARRY_MARKER =
+            ITEMS.register("quarry_marker", () -> new QuarryMarkerItem(new Item.Properties().stacksTo(1)));
 
     public static void addCreative(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(DEBUG_WAND);
+            event.accept(MINE_MARKER);
+            event.accept(QUARRY_MARKER);
         }
     }
 
@@ -32,17 +38,32 @@ public final class DVItems {
      * before the item ever gets asked.
      */
     public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
-        if (!(event.getTarget() instanceof Villager villager)
-                || !event.getItemStack().is(DEBUG_WAND.get())) {
+        if (!(event.getTarget() instanceof Villager villager)) {
             return;
         }
-        event.setCanceled(true);
-        event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide));
-        if (event.getEntity() instanceof ServerPlayer player) {
-            if (player.hasPermissions(2)) {
-                PacketDistributor.sendToPlayer(player, VillagerDebugStatePayload.snapshot(villager, true));
-            } else {
-                player.displayClientMessage(Component.literal("The debug wand requires permission level 2"), true);
+        if (event.getItemStack().is(DEBUG_WAND.get())) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide));
+            if (event.getEntity() instanceof ServerPlayer player) {
+                if (player.hasPermissions(2)) {
+                    PacketDistributor.sendToPlayer(player, VillagerDebugStatePayload.snapshot(villager, true));
+                } else {
+                    player.displayClientMessage(Component.literal("The debug wand requires permission level 2"), true);
+                }
+            }
+        } else if (event.getItemStack().getItem() instanceof SiteMarkerItem) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide));
+            if (event.getEntity() instanceof ServerPlayer player) {
+                if (SiteMarkerItem.mayDesignate(player)) {
+                    SiteMarkerItem.bind(event.getItemStack(), villager);
+                    player.displayClientMessage(Component.literal(
+                            "Marker bound to %s — now click blocks to designate the site"
+                                    .formatted(villager.getName().getString())), true);
+                } else {
+                    player.displayClientMessage(
+                            Component.literal("Site markers require creative mode or permission level 2"), true);
+                }
             }
         }
     }
