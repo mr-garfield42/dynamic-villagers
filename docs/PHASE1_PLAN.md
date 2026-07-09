@@ -19,8 +19,15 @@ Status: **in progress** (updated 2026-07-09).
 - Design note: reactive needs (eat, seek food) are Brain behaviors, not tasks — tasks are for
   ordered work only; assigned tasks take precedence over foraging (hungry workers still eat
   from carried food).
-- Next: 1.6 mod-coexistence pass (all three companion mods loaded in one dev run), starvation
-  state hook, line-of-sight check for work (currently reach-only), then Phase 2.
+- 1.6 coexistence pass done (2026-07-09): Guard Villagers 2.4.10 + Thief 1.2.2.1 + Villager
+  Overhaul 3.10.17.16 wired into dev runs via Modrinth Maven (`localRuntime`); all 16 GameTests
+  pass with all four mods loaded. Found and fixed a real conflict: behaviors added via a
+  `VillagerGoalPackages` RETURN mixin are silently dropped when GV is present (its cancellable
+  injection short-circuits later handlers) — moved to `Villager.registerBrainGoals` TAIL +
+  `Brain.addActivity`. Also verified: released VO jar gates brains only for player-recruited
+  villagers (bytecode-checked), matching its source.
+- **Phase 1 complete** except polish items: starvation state hook, line-of-sight check for
+  work (currently reach-only). Next: Phase 2 (resource gathering).
 
 ## Architectural decisions (proposed)
 

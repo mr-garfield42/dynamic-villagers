@@ -55,11 +55,17 @@ neo 21.1.215.
   follow mode, equipment slots players can edit.
 - Registered as `guardvillagers:guard` via `DeferredRegister` (`GuardEntityType.GUARD`).
 - Villagers can be converted to guards (interaction with sword); guards use crossbow/melee AI.
-- **Key technique for us — `VillagerGoalPackagesMixin`**: mixin into vanilla
+- **`VillagerGoalPackagesMixin`**: mixin into vanilla
   `VillagerGoalPackages.getCorePackage/getMeetPackage/getIdlePackage` `@At("RETURN")` to append
-  extra Brain behaviors (e.g. `RepairGolem`, `ShareGossipWithGuard`) to every villager. This is
-  the clean way to add Brain behaviors that survive brain rebuilds (profession change,
-  `refreshBrain`), because vanilla re-calls these package factories every rebuild.
+  extra Brain behaviors (e.g. `RepairGolem`, `ShareGossipWithGuard`) to every villager.
+  **Interop warning (verified empirically 2026-07-09)**: GV's handler is a *cancellable*
+  `@Inject` that unconditionally calls `setReturnValue`. A cancel at a RETURN point jumps to a
+  synthetic return that other handlers at the same point never intercept — so any mod whose
+  mixin lands after GV's (mod load order) silently loses its additions there, whether it uses
+  `@Inject` or `@ModifyReturnValue`. **Do not add behaviors via `VillagerGoalPackages` when
+  GV is present.** Our solution: `@Inject(at = @At("TAIL"))` into `Villager.registerBrainGoals`
+  and call `Brain.addActivity(Activity.CORE, priority, behaviors)` — appends without touching
+  the contested factory methods, runs on every brain rebuild, preserves everyone's behaviors.
 - Uses NeoForge **data attachments** (`GuardDataAttachments`) for extra per-entity state.
 
 ### Villager Overhaul (`villageroverhaul` v3.10.x, custom source-available license, by z2six)

@@ -27,7 +27,13 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // Add here additional repositories if required by some of the dependencies below.
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content {
+            includeGroup 'maven.modrinth'
+        }
+    }
 }
 
 base {
@@ -135,6 +141,13 @@ dependencies {
 
     // Example project dependency using a sister or child project:
     // implementation project(":myproject")
+
+    // Companion mods, present in dev runs (runClient/runServer/gameTestServer) for
+    // coexistence testing but not published as dependencies of this mod.
+    // Coordinates use Modrinth version IDs (see docs/RESEARCH.md).
+    localRuntime 'maven.modrinth:guard-villagers:PR6QZtjY'    // 2.4.10, NeoForge 1.21.1
+    localRuntime 'maven.modrinth:thief:jvvQVgqv'              // 1.2.2.1, NeoForge 1.21.1
+    localRuntime 'maven.modrinth:villager-overhaul:Z9nioxrI'  // 3.10.17.16, NeoForge 1.21.1
 
     // For more info:
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html

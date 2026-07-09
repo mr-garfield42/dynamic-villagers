@@ -612,8 +612,11 @@ You may update and modify this document with any useful information you find whi
   `ReputationLevelChangedEvent`; crime severity via block/entity tags (`thief:break_protected_*`
   etc.); reputation is stored in vanilla villager gossip. Guards auto-attack criminals via the
   `thief:guards` entity tag (already contains `guardvillagers:guard`).
-- Guard Villagers shows the canonical way to add villager Brain behaviors: mixin into
-  `VillagerGoalPackages.get*Package` at RETURN (survives brain rebuilds).
+- Adding villager Brain behaviors: do NOT mixin into `VillagerGoalPackages.get*Package` —
+  Guard Villagers' cancellable RETURN injection there short-circuits any later handler
+  (verified 2026-07-09; cost a debugging session). Instead inject at TAIL of
+  `Villager.registerBrainGoals` and call `Brain.addActivity(Activity.CORE, ...)` — appends
+  safely, survives brain rebuilds, composes with GV/VO/Thief.
 - Villager Overhaul gates the vanilla villager Brain **only for player-recruited villagers**
   (`@WrapWithCondition` on `Brain.tick` in `Villager.customServerAiStep`). Rule: Dynamic
   Villagers drives unrecruited villagers; VO owns recruited ones. Keeping our AI in the Brain
