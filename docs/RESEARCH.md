@@ -90,6 +90,16 @@ chests, storage-deposit goal, teachable "custom commands", family trees, stats/X
   also by Z2SIX) `[2.0.1.7,)` on the **client side only** — a headless server/gametest run
   loads VO fine without it, but a client refuses to start. Optional: `ezemeraldpouch`.
   Any instance running VO needs EzActions installed alongside it.
+- **VO is incompatible with dev-environment clients** (as of 3.10.17.16): its
+  `villagerRendering.VillagerModelVisibilityMixin` throws `InvalidInjectionException`
+  ("Invalid descriptor") against the recompiled Minecraft classes ModDevGradle uses, crashing
+  `runClient` on launch. Production instances are unaffected. Upstream bug — worth reporting
+  to z2six. Our dev layout therefore: client runs (working dir `run/`) load GV + Thief via
+  `localRuntime`; server-type runs (working dir `run/server/`) additionally load VO from
+  `run/server/mods`, synced by the `syncServerCoexistenceMods` Gradle task. Note that dev-run
+  mod jars must be *discovered* by FML — jars added to a run's JVM classpath via
+  `<run>AdditionalRuntimeClasspath` are NOT picked up as mods (verified: mod listed as
+  MISSING); use `localRuntime` (all runs) or a run-dir `mods/` folder (per-run).
 
 ### Coexistence rules derived from the above
 

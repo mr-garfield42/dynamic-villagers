@@ -69,6 +69,7 @@ neoForge {
             server()
             programArgument '--nogui'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            gameDirectory = project.file('run/server')
         }
 
         // This run config launches GameTestServer and runs all registered gametests, then exits.
@@ -77,6 +78,7 @@ neoForge {
         gameTestServer {
             type = "gameTestServer"
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            gameDirectory = project.file('run/server')
         }
 
         data {
@@ -121,6 +123,8 @@ neoForge {
 // "optional", meaning it will not be pulled by dependents of this mod.
 configurations {
     runtimeClasspath.extendsFrom localRuntime
+    // Mod jars loaded only by server-type dev runs, from run/server/mods (not on any classpath).
+    serverCoexistenceMods
 }
 
 dependencies {
@@ -142,17 +146,31 @@ dependencies {
     // Example project dependency using a sister or child project:
     // implementation project(":myproject")
 
-    // Companion mods, present in dev runs (runClient/runServer/gameTestServer) for
-    // coexistence testing but not published as dependencies of this mod.
-    // Coordinates use Modrinth version IDs (see docs/RESEARCH.md).
+    // Companion mods, present in dev runs for coexistence testing but not published as
+    // dependencies of this mod. Coordinates use Modrinth version IDs (see docs/RESEARCH.md).
     localRuntime 'maven.modrinth:guard-villagers:PR6QZtjY'    // 2.4.10, NeoForge 1.21.1
     localRuntime 'maven.modrinth:thief:jvvQVgqv'              // 1.2.2.1, NeoForge 1.21.1
-    localRuntime 'maven.modrinth:villager-overhaul:Z9nioxrI'  // 3.10.17.16, NeoForge 1.21.1
-    localRuntime 'maven.modrinth:ez-actions:z7npcqAM'         // 2.0.3.5 — VO's required client-side library
+
+    // Villager Overhaul's villagerRendering mixins fail to apply against the recompiled
+    // Minecraft classes of dev runs (client crash on launch: InvalidInjectionException in
+    // VillagerModelVisibilityMixin) while working fine in production instances. It is loaded
+    // in server-type dev runs only, via the run/server/mods folder (see serverCoexistenceMods
+    // below) — its client features aren't what we integrate with anyway.
+    serverCoexistenceMods 'maven.modrinth:villager-overhaul:Z9nioxrI'  // 3.10.17.16, NeoForge 1.21.1
 
     // For more info:
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
+}
+
+// Server-type dev runs load extra companion mods from their mods folder (FML scans the run
+// directory's mods folder in dev). Keeps dev-client-incompatible mods out of runClient.
+def syncServerCoexistenceMods = tasks.register('syncServerCoexistenceMods', Sync) {
+    from configurations.serverCoexistenceMods
+    into file('run/server/mods')
+}
+tasks.matching { it.name == 'runServer' || it.name == 'runGameTestServer' }.configureEach {
+    dependsOn syncServerCoexistenceMods
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
