@@ -1,5 +1,7 @@
 package com.dynamicvillagers.villager.role;
 
+import com.dynamicvillagers.village.StorageLedger;
+import com.dynamicvillagers.village.VillageAnchor;
 import com.dynamicvillagers.villager.PerceptionSystem;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.task.DepositToContainerTask;
@@ -47,8 +49,13 @@ public class FarmerPlanner implements RolePlanner {
         Predicate<ItemStack> keep = ItemFilter.parseAny(KEEP_ON_DEPOSIT);
         boolean haulReady = essence.countEmptySlots(villager) < MIN_FREE_SLOTS
                 || essence.countItems(villager, stack -> !keep.test(stack)) >= HAUL_THRESHOLD;
-        if (haulReady && essence.getMemory().nearestContainer(villager.blockPosition()) != null) {
-            queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
+        boolean knowsStorage = essence.getMemory().nearestContainer(villager.blockPosition()) != null
+                || StorageLedger.get(level).hasPublicDeposit(
+                        VillageAnchor.resolve(level, villager), villager.getUUID());
+        if (haulReady && knowsStorage) {
+            if (!RequestChore.planCarriedDelivery(level, villager, essence, KEEP_ON_DEPOSIT)) {
+                queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
+            }
             return true;
         }
         if (essence.countEmptySlots(villager) < MIN_FREE_SLOTS) {
@@ -88,7 +95,9 @@ public class FarmerPlanner implements RolePlanner {
             planned = true; // tilling happens next cycle, hoe in hand
         }
 
-        return planned || TorchChore.plan(level, villager, essence);
+        return planned
+                || RequestChore.plan(level, villager, essence, KEEP_ON_DEPOSIT)
+                || TorchChore.plan(level, villager, essence);
     }
 
     private void scan(ServerLevel level, Villager villager,

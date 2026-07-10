@@ -3,6 +3,7 @@ package com.dynamicvillagers.item;
 import com.dynamicvillagers.DynamicVillagers;
 import com.dynamicvillagers.network.VillagerDebugStatePayload;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.npc.Villager;
@@ -23,12 +24,15 @@ public final class DVItems {
             ITEMS.register("mine_marker", () -> new MineMarkerItem(new Item.Properties().stacksTo(1)));
     public static final DeferredItem<Item> QUARRY_MARKER =
             ITEMS.register("quarry_marker", () -> new QuarryMarkerItem(new Item.Properties().stacksTo(1)));
+    public static final DeferredItem<Item> STORAGE_MARKER =
+            ITEMS.register("storage_marker", () -> new StorageMarkerItem(new Item.Properties().stacksTo(1)));
 
     public static void addCreative(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(DEBUG_WAND);
             event.accept(MINE_MARKER);
             event.accept(QUARRY_MARKER);
+            event.accept(STORAGE_MARKER);
         }
     }
 
@@ -65,6 +69,21 @@ public final class DVItems {
                             Component.literal("Site markers require creative mode or permission level 2"), true);
                 }
             }
+        }
+    }
+
+    /**
+     * Storage-marker clicks on blocks are intercepted here: a chest would otherwise open its
+     * own GUI before the item's useOn ever runs.
+     */
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getItemStack().getItem() instanceof StorageMarkerItem)) {
+            return;
+        }
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide));
+        if (event.getLevel() instanceof ServerLevel level && event.getEntity() instanceof ServerPlayer player) {
+            StorageMarkerItem.designate(level, player, event.getItemStack(), event.getPos());
         }
     }
 

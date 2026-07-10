@@ -602,6 +602,12 @@ You may update and modify this document with any useful information you find whi
 
 # Established Facts (researched 2026-07-08 — see docs/RESEARCH.md for detail)
 
+## Owner directives (standing)
+- **Smelting** (2026-07-10): in addition to crafting, villagers must eventually be able to
+  smelt in furnaces — deferred to the crafting/economy phases. Furnaces are deliberately NOT
+  storage (`dynamicvillagers:storage_containers` tag); when smelting lands they become
+  workstations with their own handling.
+
 ## Pinned versions
 - Minecraft 1.21.1, NeoForge 21.1.235, Java 21, ModDevGradle 2.0.141, Parchment 1.21/2024.11.10
 - Mod id: `dynamicvillagers`, package `com.dynamicvillagers`, MIT license
@@ -614,6 +620,17 @@ You may update and modify this document with any useful information you find whi
   `ReputationLevelChangedEvent`; crime severity via block/entity tags (`thief:break_protected_*`
   etc.); reputation is stored in vanilla villager gossip. Guards auto-attack criminals via the
   `thief:guards` entity tag (already contains `guardvillagers:guard`).
+- **Thief's structure gate** (verified from the 1.2.x jar, 2026-07-10): with the default
+  `crime_only_in_protected_structures = true`, crimes are detected ONLY inside `#thief:protected`
+  worldgen structures (= generated `#minecraft:village`). Creative test pads and any village
+  our mod grows outside a generated structure are unprotected — this is why a chest-steal test
+  on a flat world shows "no Thief effects" (not a bug on either side). Chest/barrel opening is
+  a MEDIUM interact crime (`#c:chests`/`#c:barrels`) and the default guard-attack threshold is
+  MEDIUM, so guards do respond inside real villages when witnessed (32-block LOS witness model;
+  Hero of the Village grants immunity). The dev instance config (`run/config/thief-server.toml`,
+  gitignored) has the gate set to false so test pads behave. Phase 8 must address dynamic
+  villages: either document the config recommendation or contribute a positional protection
+  hook upstream to mortuusars/Thief.
 - Adding villager Brain behaviors: do NOT mixin into `VillagerGoalPackages.get*Package` —
   Guard Villagers' cancellable RETURN injection there short-circuits any later handler
   (verified 2026-07-09; cost a debugging session). Instead inject at TAIL of
@@ -621,7 +638,8 @@ You may update and modify this document with any useful information you find whi
   safely, survives brain rebuilds, composes with GV/VO/Thief.
 - Architecture decision (Phase 1): enhance vanilla `minecraft:villager` (no custom entity);
   per-villager state in one codec-serialized NeoForge data attachment; village-level state in
-  `SavedData`. See docs/PHASE1_PLAN.md (complete) and docs/PHASE2_PLAN.md (current).
+  `SavedData`. See docs/PHASE1_PLAN.md, docs/PHASE2_PLAN.md (both complete) and
+  docs/PHASE3_PLAN.md (current).
 
 ## Dev environment (this machine)
 - JDK 21 is portable at `%USERPROFILE%\.jdks\jdk-21.0.11+10` (not on PATH). Before Gradle:

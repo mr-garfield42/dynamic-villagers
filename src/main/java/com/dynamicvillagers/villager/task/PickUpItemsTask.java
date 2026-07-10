@@ -16,22 +16,38 @@ import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * Collects all dropped items within a radius of an anchor position into the villager's
- * combined inventory (vanilla slots first, then extra slots). Done when no items remain;
- * fails when the inventory is full or collection stalls.
+ * Collects dropped items within a radius of an anchor position into the villager's combined
+ * inventory (vanilla slots first, then extra slots). Done when nothing collectible remains;
+ * fails when the inventory is full.
+ *
+ * Two rules keep this from wasting the workday (owner report 2026-07-10: a lumberjack stood
+ * under its felled tree for a minute "waiting for items"): only items present during the
+ * first few seconds are chased — leaf decay drips saplings for a minute-plus, and those are
+ * gleaned opportunistically by passing villagers instead — and an item the villager can't
+ * get close to (stuck on top of the canopy) is skipped rather than stared at.
  */
 public class PickUpItemsTask implements Task {
     public static final String TYPE = "pick_up_items";
     private static final int GIVE_UP_TICKS = 1200;
     private static final double PICKUP_DISTANCE = 2.0;
+    private static final int NEW_ITEM_WINDOW_TICKS = 100;
+    private static final int TARGET_STALL_TICKS = 100;
 
     private final BlockPos anchor;
     private final double radius;
     private int ticksRun;
+    private int targetTicks;
     @Nullable
     private ItemEntity target;
+    private final Set<Integer> unreachable = new HashSet<>(); // entity ids; in-memory only
+    @Nullable
+    private Set<Integer> eligible; // snapshot after the window; null = everything qualifies
 
     public PickUpItemsTask(BlockPos anchor, double radius) {
         this.anchor = anchor;
@@ -48,13 +64,23 @@ public class PickUpItemsTask implements Task {
         if (++ticksRun > GIVE_UP_TICKS) {
             return Status.FAILED;
         }
+        if (ticksRun == NEW_ITEM_WINDOW_TICKS) {
+            // whatever has dropped by now is the haul; later leaf-decay drips are not waited on
+            eligible = itemsInRange(level).stream().map(ItemEntity::getId).collect(Collectors.toSet());
+        }
         if (target == null || !target.isAlive()) {
             target = findNearestItem(level, villager);
+            targetTicks = 0;
             if (target == null) {
-                return Status.DONE; // nothing left to collect
+                return Status.DONE; // nothing (collectible) left
             }
         }
         if (villager.distanceTo(target) > PICKUP_DISTANCE) {
+            if (++targetTicks > TARGET_STALL_TICKS) {
+                unreachable.add(target.getId()); // can't get to it — stop staring at the canopy
+                target = null;
+                return Status.IN_PROGRESS;
+            }
             // every tick, so idle strolls can't hijack a cleared walk target mid-collection
             BehaviorUtils.setWalkAndLookTargetMemories(villager, target, 0.6F, 1);
             return Status.IN_PROGRESS;
@@ -81,11 +107,16 @@ public class PickUpItemsTask implements Task {
 
     @Nullable
     private ItemEntity findNearestItem(ServerLevel level, Villager villager) {
-        AABB area = new AABB(anchor).inflate(radius, 4.0, radius);
-        return level.getEntitiesOfClass(ItemEntity.class, area, ItemEntity::isAlive)
-                .stream()
+        return itemsInRange(level).stream()
+                .filter(item -> !unreachable.contains(item.getId()))
+                .filter(item -> eligible == null || eligible.contains(item.getId()))
                 .min(Comparator.comparingDouble(villager::distanceToSqr))
                 .orElse(null);
+    }
+
+    private List<ItemEntity> itemsInRange(ServerLevel level) {
+        AABB area = new AABB(anchor).inflate(radius, 4.0, radius);
+        return level.getEntitiesOfClass(ItemEntity.class, area, ItemEntity::isAlive);
     }
 
     @Override

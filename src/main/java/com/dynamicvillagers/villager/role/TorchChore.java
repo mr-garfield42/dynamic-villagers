@@ -1,5 +1,6 @@
 package com.dynamicvillagers.villager.role;
 
+import com.dynamicvillagers.village.VillageAnchor;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.task.PlaceBlockTask;
 import com.dynamicvillagers.villager.task.TakeItemsTask;
@@ -7,8 +8,6 @@ import com.dynamicvillagers.villager.work.ItemFilter;
 import com.dynamicvillagers.villager.work.WorkHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.GlobalPos;
-import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.LightLayer;
@@ -47,7 +46,7 @@ public final class TorchChore {
 
     /** @return true if tasks were enqueued. Call from planners when there is no primary work. */
     public static boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
-        List<BlockPos> spots = findDarkSpots(level, villager, resolveAnchor(level, villager));
+        List<BlockPos> spots = findDarkSpots(level, villager, VillageAnchor.resolve(level, villager));
         if (spots.isEmpty()) {
             return false;
         }
@@ -64,17 +63,6 @@ public final class TorchChore {
         // one honestly, instead of committing to a batch of spots that were all dark at once
         essence.getTaskQueue().enqueue(new PlaceBlockTask(spots.getFirst(), TORCH_FILTER));
         return true;
-    }
-
-    /** Where "around the village" is measured from: bell, else bed, else the villager. */
-    private static BlockPos resolveAnchor(ServerLevel level, Villager villager) {
-        return villager.getBrain().getMemory(MemoryModuleType.MEETING_POINT)
-                .filter(globalPos -> globalPos.dimension() == level.dimension())
-                .map(GlobalPos::pos)
-                .or(() -> villager.getBrain().getMemory(MemoryModuleType.HOME)
-                        .filter(globalPos -> globalPos.dimension() == level.dimension())
-                        .map(GlobalPos::pos))
-                .orElse(villager.blockPosition());
     }
 
     /** Nearest spot within radius of center where a torch can stand, in the dark, or null. */

@@ -1,5 +1,7 @@
 package com.dynamicvillagers.villager;
 
+import com.dynamicvillagers.village.StorageLedger;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.Villager;
@@ -14,9 +16,10 @@ import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
 public final class DeathDropSystem {
 
     public static void onLivingDrops(LivingDropsEvent event) {
-        if (event.getEntity() instanceof Villager villager && !villager.level().isClientSide) {
+        if (event.getEntity() instanceof Villager villager && villager.level() instanceof ServerLevel level) {
             spill(event, villager, villager.getInventory());
             spill(event, villager, VillagerEssence.get(villager).getExtraInventory());
+            StorageLedger.get(level).releaseAll(villager.getUUID()); // dead villagers hold no claims
         }
     }
 

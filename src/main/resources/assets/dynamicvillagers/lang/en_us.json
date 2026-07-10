@@ -1,5 +1,6 @@
 {
   "item.dynamicvillagers.debug_wand": "Villager Debug Wand",
   "item.dynamicvillagers.mine_marker": "Mine Site Marker",
-  "item.dynamicvillagers.quarry_marker": "Quarry Marker"
+  "item.dynamicvillagers.quarry_marker": "Quarry Marker",
+  "item.dynamicvillagers.storage_marker": "Storage Marker"
 }

@@ -1,5 +1,7 @@
 package com.dynamicvillagers.villager.role;
 
+import com.dynamicvillagers.village.StorageLedger;
+import com.dynamicvillagers.village.VillageAnchor;
 import com.dynamicvillagers.villager.PerceptionSystem;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.VillagerMemory;
@@ -57,8 +59,13 @@ public class MinerPlanner implements RolePlanner {
         Predicate<ItemStack> keep = ItemFilter.parseAny(KEEP_ON_DEPOSIT);
         boolean haulReady = essence.countEmptySlots(villager) < MIN_FREE_SLOTS
                 || essence.countItems(villager, stack -> !keep.test(stack)) >= HAUL_THRESHOLD;
-        if (haulReady && memory.nearestContainer(villager.blockPosition()) != null) {
-            queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
+        boolean knowsStorage = memory.nearestContainer(villager.blockPosition()) != null
+                || StorageLedger.get(level).hasPublicDeposit(
+                        VillageAnchor.resolve(level, villager), villager.getUUID());
+        if (haulReady && knowsStorage) {
+            if (!RequestChore.planCarriedDelivery(level, villager, essence, KEEP_ON_DEPOSIT)) {
+                queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
+            }
             return true;
         }
         if (essence.countEmptySlots(villager) < MIN_FREE_SLOTS) {
@@ -69,7 +76,8 @@ public class MinerPlanner implements RolePlanner {
             if (fetchWithCooldown(level, essence, "pickaxe", 1)) {
                 return true; // mine next cycle, pickaxe in hand
             }
-            return TorchChore.plan(level, villager, essence);
+            return RequestChore.plan(level, villager, essence, KEEP_ON_DEPOSIT)
+                    || TorchChore.plan(level, villager, essence);
         }
 
         boolean hasTorches = essence.hasItem(villager, ItemFilter.parse(TorchChore.TORCH_FILTER));
@@ -126,7 +134,8 @@ public class MinerPlanner implements RolePlanner {
                 && fetchWithCooldown(level, essence, TorchChore.TORCH_FILTER, TORCH_FETCH_COUNT)) {
             return true; // go get torches, then face the dark
         }
-        return TorchChore.plan(level, villager, essence);
+        return RequestChore.plan(level, villager, essence, KEEP_ON_DEPOSIT)
+                || TorchChore.plan(level, villager, essence);
     }
 
     /**

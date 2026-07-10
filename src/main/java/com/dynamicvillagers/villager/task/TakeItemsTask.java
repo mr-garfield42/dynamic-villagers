@@ -1,6 +1,10 @@
 package com.dynamicvillagers.villager.task;
 
+import com.dynamicvillagers.registry.DVTags;
+import com.dynamicvillagers.village.StorageLedger;
+import com.dynamicvillagers.village.VillageAnchor;
 import com.dynamicvillagers.villager.VillagerEssence;
+import com.dynamicvillagers.villager.work.ContainerAnimator;
 import com.dynamicvillagers.villager.work.ContainerUtil;
 import com.dynamicvillagers.villager.work.ItemFilter;
 import com.dynamicvillagers.villager.work.WorkHelper;
@@ -8,8 +12,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
@@ -18,13 +20,17 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 
 /**
- * Withdraws items matching a filter from remembered containers, visiting them nearest-first.
- * Knowing a chest exists is not knowing its contents (design rule #1), so the villager must
- * walk to each and look inside. Done once `count` matching items are carried; fails when all
- * known containers have been searched.
+ * Withdraws items matching a filter until `count` are carried. Village knowledge first: if
+ * the storage ledger knows a container holding unreserved matches, the villager reserves
+ * them and walks straight there (Phase 3 — no more rummaging when the village knows where
+ * things are). Otherwise it falls back to the Phase 2 search: visit personally remembered
+ * containers nearest-first and look inside each — knowing a chest exists is not knowing its
+ * contents (design rule #1). Every container actually opened tops up the ledger, so searches
+ * get rarer over time. Fails when all known options are exhausted.
  */
 public class TakeItemsTask implements Task {
     public static final String TYPE = "take_items";
@@ -52,18 +58,34 @@ public class TakeItemsTask implements Task {
     @Override
     public Status tick(ServerLevel level, Villager villager) {
         VillagerEssence essence = VillagerEssence.get(villager);
+        StorageLedger ledger = StorageLedger.get(level);
+        UUID self = villager.getUUID();
+        long now = level.getGameTime();
         if (essence.countItems(villager, predicate) >= count) {
+            ledger.releaseAll(self);
             return Status.DONE;
         }
         if (++ticksRun > GIVE_UP_TICKS) {
+            ledger.releaseAll(self);
             return Status.FAILED;
         }
         if (target == null) {
-            target = essence.getMemory().knownContainers().stream()
-                    .filter(pos -> !visited.contains(pos))
-                    .min(Comparator.comparingDouble(pos -> pos.distSqr(villager.blockPosition())))
-                    .orElse(null);
+            int needed = count - essence.countItems(villager, predicate);
+            // going where the goods are known beats searching nearby
+            target = ledger.findSource(
+                    VillageAnchor.resolve(level, villager), villager.blockPosition(),
+                    self, predicate, now, visited);
+            if (target != null) {
+                ledger.reserve(target, self, predicate, needed, now);
+            } else {
+                target = essence.getMemory().knownContainers().stream()
+                        .filter(pos -> !visited.contains(pos))
+                        .filter(pos -> ledger.mayOpen(pos, self))
+                        .min(Comparator.comparingDouble(pos -> pos.distSqr(villager.blockPosition())))
+                        .orElse(null);
+            }
             if (target == null) {
+                ledger.releaseAll(self);
                 return Status.FAILED; // searched everywhere it knows
             }
         }
@@ -71,23 +93,36 @@ public class TakeItemsTask implements Task {
             return Status.IN_PROGRESS;
         }
         if (WorkHelper.findObstruction(level, villager, target) != null) {
-            visited.add(target); // can't see it, can't open it — walled off, try elsewhere
+            ledger.release(target, self); // can't see it, can't open it — walled off, try elsewhere
+            visited.add(target);
             target = null;
             return Status.IN_PROGRESS;
         }
-        if (!(level.getBlockEntity(target) instanceof Container container)) {
+        if (!(level.getBlockEntity(target) instanceof Container container)
+                || !level.getBlockState(target).is(DVTags.STORAGE_CONTAINERS)) {
             essence.getMemory().forgetContainer(target);
+            ledger.forget(target); // gone (or not storage after all) — stop believing in it
             visited.add(target);
             target = null;
             return Status.IN_PROGRESS;
         }
 
+        // a withdrawal must leave other villagers' claims behind
         int needed = count - essence.countItems(villager, predicate);
-        boolean tookAnything = false;
-        for (int i = 0; i < container.getContainerSize() && needed > 0; i++) {
+        int untouchable = ledger.reservedByOthers(target, self, predicate, now);
+        int matching = 0;
+        for (int i = 0; i < container.getContainerSize(); i++) {
             ItemStack stack = container.getItem(i);
             if (!stack.isEmpty() && predicate.test(stack)) {
-                ItemStack moving = stack.copyWithCount(Math.min(needed, stack.getCount()));
+                matching += stack.getCount();
+            }
+        }
+        int toTake = Math.min(needed, Math.max(0, matching - untouchable));
+        boolean tookAnything = false;
+        for (int i = 0; i < container.getContainerSize() && toTake > 0; i++) {
+            ItemStack stack = container.getItem(i);
+            if (!stack.isEmpty() && predicate.test(stack)) {
+                ItemStack moving = stack.copyWithCount(Math.min(toTake, stack.getCount()));
                 int offered = moving.getCount();
                 moving = ContainerUtil.insert(villager.getInventory(), moving);
                 moving = ContainerUtil.insert(essence.getExtraInventory(), moving);
@@ -95,17 +130,23 @@ public class TakeItemsTask implements Task {
                 if (moved > 0) {
                     stack.shrink(moved);
                     container.setChanged();
-                    needed -= moved;
+                    toTake -= moved;
                     tookAnything = true;
                 }
             }
         }
         if (tookAnything) {
-            level.playSound(null, target, SoundEvents.CHEST_OPEN, SoundSource.BLOCKS, 0.5F, 1.0F);
+            ContainerAnimator.flash(level, target);
         }
+        ledger.release(target, self);
+        ledger.recordSnapshot(target, container, now); // the visit is knowledge, stale or not
         visited.add(target);
         target = null;
-        return needed <= 0 ? Status.DONE : Status.IN_PROGRESS;
+        if (essence.countItems(villager, predicate) >= count) {
+            ledger.releaseAll(self);
+            return Status.DONE;
+        }
+        return Status.IN_PROGRESS;
     }
 
     @Override

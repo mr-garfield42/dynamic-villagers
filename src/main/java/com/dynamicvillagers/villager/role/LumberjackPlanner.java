@@ -1,5 +1,7 @@
 package com.dynamicvillagers.villager.role;
 
+import com.dynamicvillagers.village.StorageLedger;
+import com.dynamicvillagers.village.VillageAnchor;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.VillagerMemory;
 import com.dynamicvillagers.villager.task.ChopTreeTask;
@@ -40,8 +42,13 @@ public class LumberjackPlanner implements RolePlanner {
         Predicate<ItemStack> keep = ItemFilter.parseAny(KEEP_ON_DEPOSIT);
         boolean haulReady = essence.countEmptySlots(villager) < MIN_FREE_SLOTS
                 || essence.countItems(villager, stack -> !keep.test(stack)) >= HAUL_THRESHOLD;
-        if (haulReady && memory.nearestContainer(villager.blockPosition()) != null) {
-            queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
+        boolean knowsStorage = memory.nearestContainer(villager.blockPosition()) != null
+                || StorageLedger.get(level).hasPublicDeposit(
+                        VillageAnchor.resolve(level, villager), villager.getUUID());
+        if (haulReady && knowsStorage) {
+            if (!RequestChore.planCarriedDelivery(level, villager, essence, KEEP_ON_DEPOSIT)) {
+                queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
+            }
             return true;
         }
         if (essence.countEmptySlots(villager) < MIN_FREE_SLOTS) {
@@ -50,8 +57,9 @@ public class LumberjackPlanner implements RolePlanner {
 
         TreeScanner.Tree tree = findTree(level, villager, memory);
         if (tree == null) {
-            // no trees around — light up the neighborhood instead (milestone 2.2 chore)
-            return TorchChore.plan(level, villager, essence);
+            // no trees around — serve the request board, else light up the neighborhood
+            return RequestChore.plan(level, villager, essence, KEEP_ON_DEPOSIT)
+                    || TorchChore.plan(level, villager, essence);
         }
 
         long now = level.getGameTime();

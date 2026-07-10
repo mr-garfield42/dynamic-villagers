@@ -1,5 +1,7 @@
 package com.dynamicvillagers.command;
 
+import com.dynamicvillagers.registry.DVTags;
+import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.role.VillagerRole;
 import com.dynamicvillagers.villager.task.BreakBlockTask;
@@ -21,11 +23,13 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import org.jetbrains.annotations.Nullable;
 
 public final class DVCommands {
 
@@ -86,6 +90,33 @@ public final class DVCommands {
                                                 .executes(ctx -> enqueue(ctx, new TakeItemsTask(
                                                         StringArgumentType.getString(ctx, "filter"),
                                                         IntegerArgumentType.getInteger(ctx, "count"))))))))
+                .then(Commands.literal("storage")
+                        .then(Commands.literal("list")
+                                .executes(DVCommands::listStorage))
+                        .then(Commands.literal("public")
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                        .executes(ctx -> designateStorage(ctx,
+                                                StorageLedger.Designation.PUBLIC, null))))
+                        .then(Commands.literal("private")
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                        .then(Commands.argument("target", EntityArgument.entity())
+                                                .executes(ctx -> designateStorage(ctx,
+                                                        StorageLedger.Designation.PRIVATE, requireVillager(ctx))))))
+                        .then(Commands.literal("unclaim")
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                        .executes(ctx -> designateStorage(ctx,
+                                                StorageLedger.Designation.UNCLAIMED, null)))))
+                .then(Commands.literal("request")
+                        .then(Commands.literal("add")
+                                .then(Commands.argument("filter", StringArgumentType.word())
+                                        .then(Commands.argument("count", IntegerArgumentType.integer(1))
+                                                .then(Commands.argument("deliverTo", BlockPosArgument.blockPos())
+                                                        .executes(DVCommands::addRequest)))))
+                        .then(Commands.literal("list")
+                                .executes(DVCommands::listRequests))
+                        .then(Commands.literal("cancel")
+                                .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                                        .executes(DVCommands::cancelRequest))))
                 .then(Commands.literal("tasks")
                         .then(Commands.argument("target", EntityArgument.entity())
                                 .executes(DVCommands::listTasks)))
@@ -211,6 +242,103 @@ public final class DVCommands {
         VillagerEssence.get(villager).setHunger(value);
         ctx.getSource().sendSuccess(() -> Component.literal("hunger set to " + value), false);
         return 1;
+    }
+
+    private static int listStorage(CommandContext<CommandSourceStack> ctx) {
+        ServerLevel level = ctx.getSource().getLevel();
+        BlockPos center = BlockPos.containing(ctx.getSource().getPosition());
+        StorageLedger ledger = StorageLedger.get(level);
+        var records = ledger.recordsNear(center, StorageLedger.NETWORK_RANGE);
+        if (records.isEmpty()) {
+            ctx.getSource().sendSuccess(() -> Component.literal(
+                    "no storage records within " + StorageLedger.NETWORK_RANGE + " blocks"), false);
+            return 0;
+        }
+        long now = level.getGameTime();
+        for (var entry : records) {
+            StorageLedger.ContainerRecord record = entry.getValue();
+            StringBuilder contents = new StringBuilder();
+            for (ItemStack stack : record.contents()) {
+                contents.append(" %dx %s".formatted(stack.getCount(), stack.getItem()));
+            }
+            String line = "%s [%s%s] %s%s%s".formatted(
+                    entry.getKey().toShortString(),
+                    record.designation().name().toLowerCase(java.util.Locale.ROOT),
+                    record.owner() != null ? " owner " + record.owner().toString().substring(0, 8) : "",
+                    record.lastInspected() < 0 ? "never opened"
+                            : record.contents().isEmpty() ? "empty" : contents.toString().trim(),
+                    record.lastInspected() < 0 ? "" : " (seen %d ticks ago)".formatted(now - record.lastInspected()),
+                    record.reservations().isEmpty() ? "" : " | %d reservation(s)".formatted(record.reservations().size()));
+            ctx.getSource().sendSuccess(() -> Component.literal(line), false);
+        }
+        return records.size();
+    }
+
+    private static int designateStorage(CommandContext<CommandSourceStack> ctx,
+                                        StorageLedger.Designation designation,
+                                        @Nullable Villager owner) throws CommandSyntaxException {
+        ServerLevel level = ctx.getSource().getLevel();
+        BlockPos pos = BlockPosArgument.getLoadedBlockPos(ctx, "pos");
+        if (designation != StorageLedger.Designation.UNCLAIMED
+                && !level.getBlockState(pos).is(DVTags.STORAGE_CONTAINERS)) {
+            ctx.getSource().sendFailure(Component.literal(
+                    pos.toShortString() + " is not a storage container (chest or barrel)"));
+            return 0;
+        }
+        StorageLedger.get(level).setDesignation(pos, designation,
+                owner != null ? owner.getUUID() : null);
+        String label = switch (designation) {
+            case PUBLIC -> "public village storage";
+            case PRIVATE -> "private storage of " + owner.getName().getString();
+            case UNCLAIMED -> "unclaimed";
+        };
+        ctx.getSource().sendSuccess(() -> Component.literal(
+                pos.toShortString() + " is now " + label), false);
+        return 1;
+    }
+
+    private static int addRequest(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerLevel level = ctx.getSource().getLevel();
+        BlockPos deliverTo = BlockPosArgument.getLoadedBlockPos(ctx, "deliverTo");
+        if (!level.getBlockState(deliverTo).is(DVTags.STORAGE_CONTAINERS)) {
+            ctx.getSource().sendFailure(Component.literal(
+                    deliverTo.toShortString() + " is not a storage container (chest or barrel)"));
+            return 0;
+        }
+        String filter = StringArgumentType.getString(ctx, "filter");
+        int count = IntegerArgumentType.getInteger(ctx, "count");
+        StorageLedger.MaterialRequest request = StorageLedger.get(level)
+                .addRequest(filter, count, deliverTo, level.getGameTime());
+        ctx.getSource().sendSuccess(() -> Component.literal(
+                "request #%d posted: %dx %s to %s".formatted(
+                        request.id(), count, filter, deliverTo.toShortString())), false);
+        return request.id();
+    }
+
+    private static int listRequests(CommandContext<CommandSourceStack> ctx) {
+        StorageLedger ledger = StorageLedger.get(ctx.getSource().getLevel());
+        var requests = ledger.allRequests();
+        if (requests.isEmpty()) {
+            ctx.getSource().sendSuccess(() -> Component.literal("no open requests"), false);
+            return 0;
+        }
+        for (StorageLedger.MaterialRequest request : requests) {
+            String line = "#%d: %dx %s to %s".formatted(
+                    request.id(), request.remaining(), request.filter(),
+                    request.deliverTo().toShortString());
+            ctx.getSource().sendSuccess(() -> Component.literal(line), false);
+        }
+        return requests.size();
+    }
+
+    private static int cancelRequest(CommandContext<CommandSourceStack> ctx) {
+        int id = IntegerArgumentType.getInteger(ctx, "id");
+        if (StorageLedger.get(ctx.getSource().getLevel()).cancelRequest(id)) {
+            ctx.getSource().sendSuccess(() -> Component.literal("request #" + id + " cancelled"), false);
+            return 1;
+        }
+        ctx.getSource().sendFailure(Component.literal("no request #" + id));
+        return 0;
     }
 
     private static Villager requireVillager(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

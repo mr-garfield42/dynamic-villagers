@@ -1,5 +1,7 @@
 package com.dynamicvillagers.villager;
 
+import com.dynamicvillagers.registry.DVTags;
+import com.dynamicvillagers.village.StorageLedger;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
@@ -51,6 +53,7 @@ public final class PerceptionSystem {
                 for (Map.Entry<BlockPos, BlockEntity> entry : chunk.getBlockEntities().entrySet()) {
                     BlockPos pos = entry.getKey();
                     if (entry.getValue() instanceof Container
+                            && level.getBlockState(pos).is(DVTags.STORAGE_CONTAINERS)
                             && pos.closerThan(center, SCAN_RADIUS)
                             && canSee(level, villager, pos)) {
                         memory.rememberContainer(pos, now);
@@ -62,8 +65,10 @@ public final class PerceptionSystem {
         for (BlockPos pos : List.copyOf(memory.knownContainers())) {
             if (pos.closerThan(center, SCAN_RADIUS)
                     && level.isLoaded(pos)
-                    && !(level.getBlockEntity(pos) instanceof Container)) {
+                    && (!(level.getBlockEntity(pos) instanceof Container)
+                            || !level.getBlockState(pos).is(DVTags.STORAGE_CONTAINERS))) {
                 memory.forgetContainer(pos);
+                StorageLedger.get(level).forget(pos); // seeing it gone is village knowledge too
             }
         }
     }

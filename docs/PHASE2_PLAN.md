@@ -4,7 +4,8 @@ Goal (from CLAUDE.md): **villages become resource-positive.** Villagers with gat
 autonomously find, harvest, and store resources under player rules: real reach, real tools,
 real inventories, drops on the ground, knowledge only from perception.
 
-Status: **in progress** (started 2026-07-09).
+Status: **complete** (2026-07-09). One loose end: the manual Thief steal test from 2.7 is
+still pending; it is folded into the Phase 3 gate (see docs/PHASE3_PLAN.md, milestone 3.4).
 - Done 2026-07-09: milestones 2.0 + 2.1, death drops, debug wand + GUI (owner-verified in
   game). Milestones 2.2 (torches), 2.3 (farmer), 2.4 (miner) done later the same day, plus
   the **obstruction fix** (owner bug report: villagers mined logs through leaves): all block

@@ -21,6 +21,7 @@ public final class TaskTypes {
         register(ChopTreeTask.TYPE, ChopTreeTask::load);
         register(TakeItemsTask.TYPE, TakeItemsTask::load);
         register(TillSoilTask.TYPE, TillSoilTask::load);
+        register(DeliverItemsTask.TYPE, DeliverItemsTask::load);
     }
 
     public static void register(String typeId, BiFunction<CompoundTag, HolderLookup.Provider, Task> loader) {
