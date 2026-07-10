@@ -15,6 +15,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
@@ -104,7 +105,10 @@ public final class Blueprint {
                     new BlockPos(posTag.getInt(0), posTag.getInt(1), posTag.getInt(2)), state));
         }
         blocks.sort(Comparator
-                .comparingInt((PlannedBlock block) -> block.pos().getY())
+                // doors last (decision 6): the doorway stays an open gap while walls and
+                // interior go up, and the door never pops from adjacent wall placements
+                .comparingInt((PlannedBlock block) -> block.state().getBlock() instanceof DoorBlock ? 1 : 0)
+                .thenComparingInt(block -> block.pos().getY())
                 .thenComparingInt(block -> block.pos().getZ())
                 .thenComparingInt(block -> block.pos().getX()));
         return new Blueprint(id, size, blocks);

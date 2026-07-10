@@ -11,6 +11,7 @@ import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.HoeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.PickaxeItem;
 import net.neoforged.neoforge.common.Tags;
 
@@ -45,6 +46,9 @@ public final class ItemFilter {
         }
         if (spec.equals("seeds")) {
             return stack -> stack.is(Tags.Items.SEEDS);
+        }
+        if (spec.equals("scaffold")) { // throwaway building blocks a builder may climb on
+            return stack -> stack.is(Items.DIRT) || stack.is(Items.COBBLESTONE);
         }
         if (spec.startsWith("item:")) {
             ResourceLocation id = ResourceLocation.tryParse(spec.substring("item:".length()));

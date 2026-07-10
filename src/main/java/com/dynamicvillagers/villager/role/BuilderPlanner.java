@@ -10,11 +10,14 @@ import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.task.BreakBlockTask;
 import com.dynamicvillagers.villager.task.DepositToContainerTask;
 import com.dynamicvillagers.villager.task.PickUpItemsTask;
+import com.dynamicvillagers.villager.task.PlaceBlockTask;
 import com.dynamicvillagers.villager.task.PlaceStateTask;
 import com.dynamicvillagers.villager.task.TakeItemsTask;
 import com.dynamicvillagers.villager.task.TaskQueue;
 import com.dynamicvillagers.villager.work.ItemFilter;
+import com.dynamicvillagers.villager.work.WorkHelper;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
@@ -24,12 +27,17 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 
@@ -43,10 +51,14 @@ import java.util.function.Predicate;
  */
 public class BuilderPlanner implements RolePlanner {
     public static final int WORK_BATCH = 12;
+    public static final String SCAFFOLD_FILTER = "scaffold"; // dirt or cobblestone
     private static final int MIN_FREE_SLOTS = 4;
     private static final int FETCH_COOLDOWN = 1200;
     private static final int FETCH_CAP = 64; // one errand's worth of one material
     private static final double PICKUP_RADIUS = 5.0;
+    private static final int REACH_SCAN = 3; // horizontal radius searched for a standing spot
+    private static final int MAX_SCAFFOLD_HEIGHT = 8;
+    private static final double EYE_HEIGHT = 1.62;
     private static final List<String> KEEP_BASE = List.of("food");
 
     @Override
@@ -69,6 +81,7 @@ public class BuilderPlanner implements RolePlanner {
         List<Blueprint.PlannedBlock> batch = new ArrayList<>();
         boolean scannedAll = true;
         boolean skipped = false;
+        BlockPos firstUnreachable = null;
         for (Blueprint.PlannedBlock plan : blueprint.placedBlocks(site.origin(), site.rotation())) {
             if (batch.size() >= WORK_BATCH) {
                 scannedAll = false;
@@ -77,6 +90,9 @@ public class BuilderPlanner implements RolePlanner {
             BlockState world = level.getBlockState(plan.pos());
             if (matches(world, plan.state())) {
                 continue;
+            }
+            if (!plan.state().isAir() && BlockRequirements.isDependentPart(plan.state())) {
+                continue; // realized atomically by its primary half; never its own work
             }
             if (!world.isAir() && world.getDestroySpeed(level, plan.pos()) < 0) {
                 skipped = true; // unbreakable occupant — a villager cannot fix this
@@ -96,15 +112,32 @@ public class BuilderPlanner implements RolePlanner {
                 skipped = true; // another builder's claim
                 continue;
             }
+            if (!isReachable(level, villager, plan.pos())) {
+                skipped = true; // no standing spot in reach — burn no give-up timers on it
+                if (firstUnreachable == null) {
+                    firstUnreachable = plan.pos();
+                }
+                continue;
+            }
             batch.add(plan);
         }
 
         if (batch.isEmpty()) {
+            pruneScaffold(level, ledger, site);
             if (scannedAll && !skipped) {
+                if (!site.scaffold().isEmpty()) {
+                    return planScaffoldTeardown(essence, site); // no mess left behind
+                }
                 ledger.setStatus(site, ConstructionLedger.Status.DONE);
                 if (essence.getAssignedSiteId() == site.id()) {
                     essence.setAssignedSiteId(-1);
                 }
+                return false;
+            }
+            if (scannedAll && firstUnreachable != null) {
+                // everything left is out of reach — build a dirt staircase up to it
+                return planScaffold(level, villager, essence, ledger, site, blueprint,
+                        firstUnreachable, now);
             }
             // blocked (others' claims, missing supports): wait it out — an open site is a
             // commitment, not a suggestion; chores would spend the site's materials
@@ -240,6 +273,114 @@ public class BuilderPlanner implements RolePlanner {
 
     private static String itemFilterSpec(Item item) {
         return "item:" + BuiltInRegistries.ITEM.getKey(item);
+    }
+
+    /** Some standing position (solid footing, body space, within arm's reach) exists. */
+    private static boolean isReachable(ServerLevel level, Villager villager, BlockPos target) {
+        double reachSq = WorkHelper.REACH * WorkHelper.REACH;
+        if (villager.getEyePosition().distanceToSqr(Vec3.atCenterOf(target)) <= reachSq) {
+            return true;
+        }
+        for (int dy = 1; dy >= -5; dy--) {
+            for (int dx = -REACH_SCAN; dx <= REACH_SCAN; dx++) {
+                for (int dz = -REACH_SCAN; dz <= REACH_SCAN; dz++) {
+                    BlockPos feet = target.offset(dx, dy, dz);
+                    if (feet.equals(target) || !isStandable(level, feet)) {
+                        continue;
+                    }
+                    double ex = feet.getX() + 0.5 - (target.getX() + 0.5);
+                    double ey = feet.getY() + EYE_HEIGHT - (target.getY() + 0.5);
+                    double ez = feet.getZ() + 0.5 - (target.getZ() + 0.5);
+                    if (ex * ex + ey * ey + ez * ez <= reachSq) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isStandable(ServerLevel level, BlockPos feet) {
+        BlockPos below = feet.below();
+        return level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)
+                && level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
+                && level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty();
+    }
+
+    /**
+     * Plans a 1-wide dirt/cobble staircase up to standing height beside an unreachable
+     * target: the top step puts the builder's feet one below the target, each lower step
+     * descends one block outward until it grounds. Steps are recorded on the site so the
+     * teardown pass removes every one of them; cells the blueprint owns are never used.
+     */
+    private static boolean planScaffold(ServerLevel level, Villager villager, VillagerEssence essence,
+                                        ConstructionLedger ledger, ConstructionLedger.ConstructionSite site,
+                                        Blueprint blueprint, BlockPos target, long now) {
+        Set<BlockPos> reserved = new HashSet<>();
+        for (Blueprint.PlannedBlock plan : blueprint.placedBlocks(site.origin(), site.rotation())) {
+            if (!plan.state().isAir()) {
+                reserved.add(plan.pos());
+            }
+        }
+        for (Direction dir : Direction.Plane.HORIZONTAL) {
+            List<BlockPos> steps = new ArrayList<>();
+            BlockPos cursor = target.relative(dir).below(2); // stand here = feet at target.y - 1
+            boolean grounded = false;
+            for (int i = 0; i <= MAX_SCAFFOLD_HEIGHT && !grounded; i++) {
+                BlockState state = level.getBlockState(cursor);
+                if ((!state.isAir() && !state.canBeReplaced())
+                        || reserved.contains(cursor) || site.scaffold().contains(cursor)) {
+                    steps.clear();
+                    break; // this direction collides with the world or the plan — try another
+                }
+                steps.add(cursor);
+                BlockPos below = cursor.below();
+                grounded = level.getBlockState(below).isFaceSturdy(level, below, Direction.UP);
+                cursor = cursor.relative(dir).below();
+            }
+            if (steps.isEmpty() || !grounded) {
+                continue;
+            }
+            Collections.reverse(steps); // build bottom-up, climbing as it goes
+            int carried = essence.countItems(villager, ItemFilter.parse(SCAFFOLD_FILTER));
+            if (carried < steps.size()) {
+                if (now >= essence.getNextToolFetchTime()
+                        && !essence.getMemory().knownContainers().isEmpty()) {
+                    essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
+                    essence.getTaskQueue().enqueue(new TakeItemsTask(SCAFFOLD_FILTER, steps.size()));
+                    return true;
+                }
+                return false;
+            }
+            for (BlockPos step : steps) {
+                ledger.addScaffold(site, step);
+                essence.getTaskQueue().enqueue(new PlaceBlockTask(step, SCAFFOLD_FILTER));
+            }
+            return true;
+        }
+        return false; // no side offers a staircase line — give up this cycle
+    }
+
+    /** The structure matches its blueprint; now the scaffold comes down, top step first. */
+    private static boolean planScaffoldTeardown(VillagerEssence essence,
+                                                ConstructionLedger.ConstructionSite site) {
+        List<BlockPos> steps = new ArrayList<>(site.scaffold());
+        steps.sort(Comparator.<BlockPos>comparingInt(BlockPos::getY).reversed());
+        for (BlockPos step : steps) {
+            essence.getTaskQueue().enqueue(new BreakBlockTask(step));
+        }
+        essence.getTaskQueue().enqueue(new PickUpItemsTask(steps.getFirst(), PICKUP_RADIUS));
+        return true;
+    }
+
+    /** Forgets scaffold entries the world no longer holds (broken by us or anyone else). */
+    private static void pruneScaffold(ServerLevel level, ConstructionLedger ledger,
+                                      ConstructionLedger.ConstructionSite site) {
+        for (BlockPos pos : List.copyOf(site.scaffold())) {
+            if (level.getBlockState(pos).isAir()) {
+                ledger.removeScaffold(site, pos);
+            }
+        }
     }
 
     /** The rotated blueprint box, slightly inflated — where our own clearing drops land. */

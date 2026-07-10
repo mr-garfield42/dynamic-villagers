@@ -34,13 +34,8 @@ public final class BlockRequirements {
         if (state.isAir()) {
             return null; // "must be air" costs nothing — it is clear work
         }
-        if (state.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF)
-                && state.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.UPPER) {
-            return null; // doors/tall plants: the lower half's item covers both
-        }
-        if (state.hasProperty(BlockStateProperties.BED_PART)
-                && state.getValue(BlockStateProperties.BED_PART) == BedPart.HEAD) {
-            return null; // the foot's bed item covers the head
+        if (isDependentPart(state)) {
+            return null; // the primary half's item covers both parts
         }
         if (state.is(Blocks.FARMLAND) || state.is(Blocks.DIRT_PATH)) {
             return new Requirement(Items.DIRT, 1); // placed as dirt, then tilled/shoveled
@@ -56,6 +51,20 @@ public final class BlockRequirements {
         }
         Item item = state.getBlock().asItem();
         return new Requirement(item, 1); // item == AIR marks an unbuildable state
+    }
+
+    /**
+     * The half of a multi-part block that its primary places atomically (door upper, bed
+     * head). These never get their own placement work: a lone half pops off on the next
+     * neighbor update, so PlaceStateOrder sets both parts in one tick from the primary,
+     * and the builder's diff skips dependent entries entirely (vanilla breaks the primary
+     * whenever a dependent half is destroyed, so the primary's mismatch covers repair).
+     */
+    public static boolean isDependentPart(BlockState state) {
+        return (state.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF)
+                        && state.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.UPPER)
+                || (state.hasProperty(BlockStateProperties.BED_PART)
+                        && state.getValue(BlockStateProperties.BED_PART) == BedPart.HEAD);
     }
 
     /** True when the state can physically be built by a villager carrying items. */

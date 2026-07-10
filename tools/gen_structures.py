@@ -109,9 +109,43 @@ def empty11x11():
     return structure((11, 8, 11), palette, blocks)
 
 
+def fixture_hut():
+    """Gametest fixture for multi-part placement: a 3x3 plank floor with a bed (foot+head)
+    and a door (lower+upper) — each pair must be placed atomically from one item."""
+    PLANKS, BED_FOOT, BED_HEAD, DOOR_LOWER, DOOR_UPPER, AIR = range(6)
+    palette = [
+        ("minecraft:oak_planks", None),
+        ("minecraft:white_bed", {"part": "foot", "facing": "north", "occupied": "false"}),
+        ("minecraft:white_bed", {"part": "head", "facing": "north", "occupied": "false"}),
+        ("minecraft:oak_door", {"facing": "east", "half": "lower", "hinge": "left",
+                                "open": "false", "powered": "false"}),
+        ("minecraft:oak_door", {"facing": "east", "half": "upper", "hinge": "left",
+                                "open": "false", "powered": "false"}),
+        ("minecraft:air", None),
+    ]
+    special = {(1, 1, 2): BED_FOOT, (1, 1, 1): BED_HEAD, (0, 1, 0): DOOR_LOWER, (0, 2, 0): DOOR_UPPER}
+    blocks = []
+    for y in range(3):
+        for z in range(3):
+            for x in range(3):
+                state = PLANKS if y == 0 else special.get((x, y, z), AIR)
+                blocks.append(((x, y, z), state))
+    return structure((3, 3, 3), palette, blocks)
+
+
+def fixture_pillar():
+    """Gametest fixture for scaffolding: a 1x6x1 plank pillar whose top has no natural
+    standing spot in reach — the builder must stair-step up on scaffold and tear it down."""
+    palette = [("minecraft:oak_planks", None)]
+    blocks = [(((0, y, 0)), 0) for y in range(6)]
+    return structure((1, 6, 1), palette, blocks)
+
+
 TEMPLATES = {
     "starter_shelter": starter_shelter,
     "empty11x11": empty11x11,
+    "fixture_hut": fixture_hut,
+    "fixture_pillar": fixture_pillar,
 }
 
 if __name__ == "__main__":

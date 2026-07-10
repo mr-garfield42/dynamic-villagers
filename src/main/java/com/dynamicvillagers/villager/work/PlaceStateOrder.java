@@ -11,6 +11,9 @@ import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -94,6 +97,38 @@ public class PlaceStateOrder implements WorkOrder {
         if (!target.canSurvive(level, pos)) {
             return true; // support missing (torch before its wall) — a later pass retries
         }
+
+        // Multi-part blocks place whole or not at all: a lone door/bed half pops off on the
+        // next neighbor update and eats the item (owner playtest: "cut off partially").
+        BlockPos secondaryPos = null;
+        BlockState secondaryState = null;
+        if (target.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF)
+                && target.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.LOWER) {
+            secondaryPos = pos.above();
+            secondaryState = target.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER);
+        } else if (target.hasProperty(BlockStateProperties.BED_PART)
+                && target.getValue(BlockStateProperties.BED_PART) == BedPart.FOOT) {
+            secondaryPos = pos.relative(target.getValue(BlockStateProperties.HORIZONTAL_FACING));
+            secondaryState = target.setValue(BlockStateProperties.BED_PART, BedPart.HEAD);
+        }
+        if (secondaryPos != null) {
+            BlockState occupant = level.getBlockState(secondaryPos);
+            if (occupant != secondaryState && !occupant.isAir() && !occupant.canBeReplaced()) {
+                if (occupant.getDestroySpeed(level, secondaryPos) < 0) {
+                    return true; // the other half's spot is unclearable — abandon
+                }
+                if (clearing == null || !clearing.pos().equals(secondaryPos)) {
+                    clearing = new BreakBlockOrder(secondaryPos);
+                }
+                if (clearing.tick(level, villager)) {
+                    clearing = null;
+                }
+                return false;
+            }
+            if (!level.isUnobstructed(secondaryState, secondaryPos, CollisionContext.empty())) {
+                return false; // an entity is standing where the other half goes
+            }
+        }
         if (!level.isUnobstructed(target, pos, CollisionContext.empty())) {
             // an entity is in the way — when it is the builder itself, step aside instead
             // of waiting for the give-up timer (players move out of their own way too)
@@ -124,6 +159,9 @@ public class PlaceStateOrder implements WorkOrder {
             }
         }
         level.setBlockAndUpdate(pos, target);
+        if (secondaryPos != null) {
+            level.setBlockAndUpdate(secondaryPos, secondaryState);
+        }
         level.playSound(null, pos, target.getSoundType().getPlaceSound(), SoundSource.BLOCKS, 1.0F, 0.8F);
         if (slot != null) {
             ItemStack stack = slot.stack();

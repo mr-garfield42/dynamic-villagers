@@ -334,6 +334,71 @@ public class ConstructionTests {
         helper.succeed();
     }
 
+    /**
+     * 4.4: doors and beds place whole from one item — a lone half pops off on the next
+     * neighbor update (owner playtest: both came out "cut off partially").
+     */
+    @GameTest(template = "empty11x11", timeoutTicks = 6000, batch = "dvConstructionMultipart")
+    public static void builder_places_doors_and_beds_whole(GameTestHelper helper) {
+        StorageLedger.get(helper.getLevel()).clear();
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.OAK_PLANKS, 16));
+        essence.getExtraInventory().setItem(1, new ItemStack(Items.WHITE_BED, 1)); // exactly one
+        essence.getExtraInventory().setItem(2, new ItemStack(Items.OAK_DOOR, 1));  // exactly one
+
+        ConstructionLedger.ConstructionSite site = ledger.addSite(
+                ResourceLocation.fromNamespaceAndPath(DynamicVillagers.MOD_ID, "fixture_hut"),
+                helper.absolutePos(new BlockPos(4, 2, 4)), Rotation.NONE,
+                helper.getLevel().getGameTime());
+        essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedSiteId(site.id());
+
+        helper.succeedWhen(() -> {
+            helper.assertBlockPresent(Blocks.OAK_DOOR, new BlockPos(4, 3, 4));  // lower half
+            helper.assertBlockPresent(Blocks.OAK_DOOR, new BlockPos(4, 4, 4));  // upper half
+            helper.assertBlockPresent(Blocks.WHITE_BED, new BlockPos(5, 3, 6)); // foot
+            helper.assertBlockPresent(Blocks.WHITE_BED, new BlockPos(5, 3, 5)); // head
+            helper.assertTrue(site.status() == ConstructionLedger.Status.DONE,
+                    "the hut should be complete");
+        });
+    }
+
+    /**
+     * 4.5: work with no standing spot in reach is skipped (no give-up stalls), and when
+     * only unreachable work remains the builder stair-steps up on scaffold blocks and
+     * tears every one of them down again after the build.
+     */
+    @GameTest(template = "empty11x11", timeoutTicks = 9000, batch = "dvConstructionScaffold")
+    public static void builder_scaffolds_up_and_tears_down(GameTestHelper helper) {
+        StorageLedger.get(helper.getLevel()).clear();
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.OAK_PLANKS, 16));
+        essence.getExtraInventory().setItem(1, new ItemStack(Items.DIRT, 16));
+
+        ConstructionLedger.ConstructionSite site = ledger.addSite(
+                ResourceLocation.fromNamespaceAndPath(DynamicVillagers.MOD_ID, "fixture_pillar"),
+                helper.absolutePos(new BlockPos(5, 2, 5)), Rotation.NONE,
+                helper.getLevel().getGameTime());
+        essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedSiteId(site.id());
+
+        helper.succeedWhen(() -> {
+            helper.assertBlockPresent(Blocks.OAK_PLANKS, new BlockPos(5, 7, 5)); // pillar top
+            helper.assertTrue(site.status() == ConstructionLedger.Status.DONE,
+                    "the pillar should be complete");
+            helper.assertTrue(site.scaffold().isEmpty(),
+                    "every scaffold block should be torn down again");
+        });
+    }
+
     private static ListTag intList(int x, int y, int z) {
         ListTag list = new ListTag();
         list.add(IntTag.valueOf(x));
