@@ -3,6 +3,7 @@ package com.dynamicvillagers.gametest;
 import com.dynamicvillagers.DynamicVillagers;
 import com.dynamicvillagers.villager.HungerSystem;
 import com.dynamicvillagers.villager.VillagerEssence;
+import com.dynamicvillagers.villager.role.VillagerRole;
 import com.dynamicvillagers.villager.behavior.SeekFoodItemBehavior;
 import com.dynamicvillagers.villager.task.BreakBlockTask;
 import com.dynamicvillagers.villager.task.DepositToContainerTask;
@@ -252,12 +253,25 @@ public class VillagerFrameworkTests {
     }
 
     @GameTest(template = "empty5x5", timeoutTicks = 200)
-    public static void picks_up_any_dropped_item_nearby(GameTestHelper helper) {
+    public static void working_villager_picks_up_any_dropped_item_nearby(GameTestHelper helper) {
         Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        VillagerEssence.get(villager).setRole(VillagerRole.MINER); // a worker, not a socializer
         helper.spawnItem(Items.IRON_PICKAXE, 2.5F, 2.5F, 2.5F);
         helper.succeedWhen(() -> helper.assertTrue(
                 countItem(villager.getInventory(), Items.IRON_PICKAXE) == 1,
-                "villager should pick up any item dropped at its feet"));
+                "a working villager should pick up any item dropped at its feet"));
+    }
+
+    /** Owner playtest (2026-07-10): socializers strolling past must not pocket work drops. */
+    @GameTest(template = "empty5x5", timeoutTicks = 300)
+    public static void idle_villager_leaves_work_drops_alone(GameTestHelper helper) {
+        Villager villager = helper.spawn(EntityType.VILLAGER, CENTER);
+        helper.spawnItem(Items.IRON_PICKAXE, 2.5F, 2.5F, 2.5F);
+        helper.runAfterDelay(150, () -> {
+            helper.assertTrue(countItem(villager.getInventory(), Items.IRON_PICKAXE) == 0,
+                    "a role-less villager should not grab non-food work drops");
+            helper.succeed();
+        });
     }
 
     @GameTest(template = "empty5x5")

@@ -53,7 +53,7 @@ public class BuilderPlanner implements RolePlanner {
     public static final int WORK_BATCH = 12;
     public static final String SCAFFOLD_FILTER = "scaffold"; // dirt or cobblestone
     private static final int MIN_FREE_SLOTS = 4;
-    private static final int FETCH_COOLDOWN = 1200;
+    private static final int FETCH_COOLDOWN = 600; // between restock attempts while short
     private static final int FETCH_CAP = 64; // one errand's worth of one material
     private static final double PICKUP_RADIUS = 5.0;
     private static final int REACH_SCAN = 3; // horizontal radius searched for a standing spot
@@ -64,7 +64,7 @@ public class BuilderPlanner implements RolePlanner {
     @Override
     public boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
         ConstructionLedger ledger = ConstructionLedger.get(level);
-        ConstructionLedger.ConstructionSite site = activeSite(level, villager, essence, ledger);
+        ConstructionLedger.ConstructionSite site = activeSite(essence, ledger);
         Blueprint blueprint = site != null ? Blueprints.load(level, site.templateId()) : null;
 
         List<String> keepFilters = keepFilters(blueprint);
@@ -216,23 +216,24 @@ public class BuilderPlanner implements RolePlanner {
         return planned; // false = blocked entirely — wait out the cooldown, don't chore
     }
 
-    /** The assigned site when it is real and open; otherwise the oldest open site in range. */
+    /**
+     * The assigned site when it is real and open — and nothing else. Owner decision
+     * (2026-07-10): builders never adopt open sites on their own; auto-assignment is the
+     * Phase 5 village manager's job.
+     */
     @Nullable
-    private static ConstructionLedger.ConstructionSite activeSite(ServerLevel level, Villager villager,
-                                                                  VillagerEssence essence,
+    private static ConstructionLedger.ConstructionSite activeSite(VillagerEssence essence,
                                                                   ConstructionLedger ledger) {
         int assignedId = essence.getAssignedSiteId();
-        if (assignedId != -1) {
-            ConstructionLedger.ConstructionSite assigned = ledger.getSite(assignedId);
-            if (assigned != null && assigned.status() == ConstructionLedger.Status.OPEN) {
-                return assigned;
-            }
-            essence.setAssignedSiteId(-1); // cancelled or finished — the order is spent
+        if (assignedId == -1) {
+            return null;
         }
-        BlockPos anchor = VillageAnchor.resolve(level, villager);
-        List<ConstructionLedger.ConstructionSite> open = ledger.sitesNear(
-                anchor, StorageLedger.NETWORK_RANGE, ConstructionLedger.Status.OPEN);
-        return open.isEmpty() ? null : open.getFirst();
+        ConstructionLedger.ConstructionSite assigned = ledger.getSite(assignedId);
+        if (assigned != null && assigned.status() == ConstructionLedger.Status.OPEN) {
+            return assigned;
+        }
+        essence.setAssignedSiteId(-1); // cancelled or finished — the order is spent
+        return null;
     }
 
     /** Food plus every material of the active site — deposits must not dump the walls. */

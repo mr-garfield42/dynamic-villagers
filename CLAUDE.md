@@ -613,6 +613,18 @@ You may update and modify this document with any useful information you find whi
   are allowed only as gametest fixtures / debug scaffolding (e.g. `starter_shelter`),
   never as village content.
 
+- **Profession integration** (2026-07-10, owner decisions from planning Q&A): DV roles and
+  vanilla professions become one identity. Mapping: Farmer↔Farmer, Miner↔Toolsmith,
+  Lumberjack↔Fletcher, Builder↔Mason. Setting a DV role makes the villager seek and claim
+  the nearest free matching jobsite block, which grants the vanilla profession/skin the
+  vanilla way (role works immediately; cosmetic arrives with the POI claim — professions are
+  never force-set). Reverse direction: a villager that naturally claims any mapped jobsite
+  auto-gains the DV role. Unmapped professions (librarian, cleric, ...) stay pure vanilla;
+  villagers keep and level their trades (Phase 6 hook). Research vanilla POI-claim /
+  profession-reset mechanics before implementing.
+- **Builders build assigned sites only** (2026-07-10): no opportunistic adoption of open
+  construction sites until the Phase 5 village manager assigns work properly.
+
 ## Scheduled next after Phase 4 (owner, 2026-07-10)
 - **Hunter role** — see the idea entry below; pull it forward as the first work item once
   Phase 4 closes (killing + cooking + depositing loop; sales wait for Phase 6).

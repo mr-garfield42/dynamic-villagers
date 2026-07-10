@@ -13,10 +13,13 @@ import com.dynamicvillagers.villager.task.TaskQueue;
 import com.dynamicvillagers.villager.work.ItemFilter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -33,6 +36,7 @@ public class LumberjackPlanner implements RolePlanner {
     private static final int TOOL_FETCH_COOLDOWN = 1200;
     private static final int MAX_REMEMBERED_TREES = 8;
     private static final double PICKUP_RADIUS = 4.0;
+    private static final int EXTRA_SAPLINGS = 2; // planted around a felled tree, beyond the stump
 
     @Override
     public boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
@@ -72,8 +76,40 @@ public class LumberjackPlanner implements RolePlanner {
         queue.enqueue(new ChopTreeTask(tree.logs()));
         queue.enqueue(new PickUpItemsTask(tree.base(), PICKUP_RADIUS));
         queue.enqueue(new PlaceBlockTask(tree.base(), "sapling"));
+        // owner request (2026-07-10): thicken the woods — spare saplings go onto nearby
+        // soil too, not just the stump. Planting no-ops gracefully when none are carried.
+        for (BlockPos spot : extraSaplingSpots(level, tree.base())) {
+            queue.enqueue(new PlaceBlockTask(spot, "sapling"));
+        }
         memory.forgetSpot(TREE_SPOT, tree.base());
         return true;
+    }
+
+    /**
+     * Up to two plantable spots around a felled tree: dirt-family soil with a free block
+     * above, clear of the stump replant and spread apart so the copse has room to grow.
+     * Lingering canopy leaves make a spot look occupied at execution time — PlaceBlockTask
+     * treats that as "already taken" and moves on, which is fine.
+     */
+    private static List<BlockPos> extraSaplingSpots(ServerLevel level, BlockPos base) {
+        List<BlockPos> spots = new ArrayList<>();
+        for (BlockPos pos : BlockPos.betweenClosed(base.offset(-3, -1, -3), base.offset(3, 1, 3))) {
+            if (spots.size() >= EXTRA_SAPLINGS) {
+                break;
+            }
+            if (pos.distManhattan(base) < 2
+                    || (!spots.isEmpty() && spots.getFirst().distManhattan(pos) < 3)) {
+                continue; // crowded saplings shade each other out
+            }
+            if (!level.getBlockState(pos.below()).is(BlockTags.DIRT)) {
+                continue;
+            }
+            BlockState state = level.getBlockState(pos);
+            if (state.isAir() || state.canBeReplaced()) {
+                spots.add(pos.immutable());
+            }
+        }
+        return spots;
     }
 
     @Nullable

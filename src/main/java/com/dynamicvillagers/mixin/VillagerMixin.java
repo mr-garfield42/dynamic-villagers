@@ -1,9 +1,11 @@
 package com.dynamicvillagers.mixin;
 
+import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.behavior.EatFoodBehavior;
 import com.dynamicvillagers.villager.behavior.ExecuteTaskBehavior;
 import com.dynamicvillagers.villager.behavior.PlanWorkBehavior;
 import com.dynamicvillagers.villager.behavior.SeekFoodItemBehavior;
+import com.dynamicvillagers.villager.role.VillagerRole;
 import com.google.common.collect.ImmutableList;
 import net.minecraft.world.entity.ai.Brain;
 import net.minecraft.world.entity.npc.Villager;
@@ -35,10 +37,13 @@ public abstract class VillagerMixin {
     }
 
     /**
-     * Vanilla villagers only pick up profession-wanted items (bread, seeds, ...). Ours accept
-     * anything they have room for, like a player would — the vanilla pickup path in Mob#aiStep
-     * does the rest once this returns true. They still only *walk toward* dropped food
-     * (SeekFoodItemBehavior); other items are grabbed only when already within arm's reach.
+     * Vanilla villagers only pick up profession-wanted items (bread, seeds, ...). Villagers
+     * with a Dynamic Villagers role accept anything they have room for, like a player would
+     * — the vanilla pickup path in Mob#aiStep does the rest once this returns true. They
+     * still only *walk toward* dropped food (SeekFoodItemBehavior); other items are grabbed
+     * only when already within arm's reach. Role-less villagers keep pure vanilla behavior:
+     * socializers strolling past a work site must not pocket the workers' drops (owner
+     * playtest, 2026-07-10).
      */
     @Inject(method = "wantsToPickUp", at = @At("RETURN"), cancellable = true)
     private void dynamicvillagers$wantsAnyCarriableItem(ItemStack stack, CallbackInfoReturnable<Boolean> cir) {
@@ -46,7 +51,8 @@ public abstract class VillagerMixin {
             return;
         }
         Villager self = (Villager) (Object) this;
-        if (self.getInventory().canAddItem(stack)) {
+        if (VillagerEssence.get(self).getRole() != VillagerRole.NONE
+                && self.getInventory().canAddItem(stack)) {
             cir.setReturnValue(true);
         }
     }

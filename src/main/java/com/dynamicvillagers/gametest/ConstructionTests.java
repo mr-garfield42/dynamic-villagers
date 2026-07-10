@@ -287,6 +287,8 @@ public class ConstructionTests {
                             "the missing torch should keep the site open");
                     helper.assertBlockNotPresent(Blocks.TORCH, new BlockPos(4, 3, 4));
                     chest.setItem(3, new ItemStack(Items.TORCH, 4)); // restock arrives
+                    // assert the retry behavior, not the cooldown's phase alignment
+                    essence.setNextToolFetchTime(0);
                 })
                 .thenWaitUntil(() -> {
                     helper.assertBlockPresent(Blocks.TORCH, new BlockPos(4, 3, 4));
