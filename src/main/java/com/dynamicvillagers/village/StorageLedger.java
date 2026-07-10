@@ -442,7 +442,13 @@ public class StorageLedger extends SavedData {
             }
             ListTag items = new ListTag();
             for (ItemStack stack : record.contents) {
-                items.add(stack.save(provider));
+                // snapshots merge same-kind stacks, so counts routinely exceed the vanilla
+                // stack size — which ItemStack's codec refuses to save ([1;99] crash).
+                // Persist a single-count sample plus the real count on the side.
+                CompoundTag itemTag = new CompoundTag();
+                itemTag.put("item", stack.copyWithCount(1).save(provider));
+                itemTag.putInt("count", stack.getCount());
+                items.add(itemTag);
             }
             recordTag.put("items", items);
             ListTag reservations = new ListTag();
@@ -486,7 +492,17 @@ public class StorageLedger extends SavedData {
             record.designation = designation != null ? designation : Designation.UNCLAIMED;
             record.owner = recordTag.hasUUID("owner") ? recordTag.getUUID("owner") : null;
             for (Tag item : recordTag.getList("items", Tag.TAG_COMPOUND)) {
-                ItemStack.parse(provider, item).ifPresent(record.contents::add);
+                if (!(item instanceof CompoundTag itemTag)) {
+                    continue;
+                }
+                if (itemTag.contains("item")) { // sample + side count (see save)
+                    ItemStack.parse(provider, itemTag.getCompound("item")).ifPresent(stack -> {
+                        stack.setCount(itemTag.getInt("count"));
+                        record.contents.add(stack);
+                    });
+                } else { // records saved before the wrapped format: raw stacks
+                    ItemStack.parse(provider, itemTag).ifPresent(record.contents::add);
+                }
             }
             for (Tag reservation : recordTag.getList("reservations", Tag.TAG_COMPOUND)) {
                 if (reservation instanceof CompoundTag reservationTag) {

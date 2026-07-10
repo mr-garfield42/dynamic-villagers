@@ -46,6 +46,17 @@ gametest coexistence are green, the manual playtest is pending.
     Phase 8 implication (dynamically grown villages are also outside generated structures).
 - Still open for 3.4: redo the steal test with the gate off (or in a generated village) —
   witnesses in range, no Hero of the Village buff.
+- Owner playtest, second round (2026-07-10, during Phase 4 testing):
+  - **World-save crash on stocked chests**: ledger snapshots merge same-kind stacks, so a
+    chest holding 2+ stacks of one item produced a record count above the vanilla stack
+    size — `ItemStack`'s codec refuses counts outside [1;99] and the save crashed. Records
+    now persist a single-count sample plus the real count on the side (old-format records
+    still load); regression gametest `ledger_saves_merged_stacks_beyond_max_size`.
+  - **Chest lids still didn't visibly swing**: `ContainerAnimator.flash` was gated on items
+    actually moving, so a villager opening a chest that had nothing it wanted (or that was
+    full) animated nothing; and on double chests the event went to one half while the
+    renderer may drive the lid from the other. Lids now flash on every real container
+    open, and both halves of a double chest get the event.
 
 ## What Phase 2 already gives us
 
@@ -172,7 +183,7 @@ way for anything to *ask* for materials.
 - GameTests: a request drains public storage into the deliver-to chest; a lumberjack's
   logs land at the requesting chest while the request is open.
 
-### 3.4 Phase gate — *benchmark + gametests done; manual playtest pending*
+### 3.4 Phase gate — *benchmark + gametests done; manual playtest done*
 - Perf: rerun `PerformanceBenchmarks` with ledger-enabled planners (50 villagers) — the
   ledger should *reduce* work (fewer walk-and-search cycles); confirm no regression from
   record queries.

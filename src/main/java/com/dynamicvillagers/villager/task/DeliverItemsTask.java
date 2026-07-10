@@ -148,7 +148,6 @@ public class DeliverItemsTask implements Task {
             }
         }
         int toTake = Math.min(remaining, Math.max(0, available - untouchable));
-        boolean tookAnything = false;
         for (int i = 0; i < container.getContainerSize() && toTake > 0; i++) {
             ItemStack stack = container.getItem(i);
             if (!stack.isEmpty() && matching.test(stack)) {
@@ -161,13 +160,10 @@ public class DeliverItemsTask implements Task {
                     stack.shrink(moved);
                     container.setChanged();
                     toTake -= moved;
-                    tookAnything = true;
                 }
             }
         }
-        if (tookAnything) {
-            ContainerAnimator.flash(level, source);
-        }
+        ContainerAnimator.flash(level, source); // opened, even if nothing matched
         ledger.release(source, self);
         ledger.recordSnapshot(source, container, now);
         visited.add(source);
@@ -190,6 +186,7 @@ public class DeliverItemsTask implements Task {
             return finish(ledger, self);
         }
 
+        ContainerAnimator.flash(level, destination); // opened, even when it turns out full
         int remaining = count - delivered;
         int moved = 0;
         for (SimpleContainer inventory : new SimpleContainer[]{villager.getInventory(), essence.getExtraInventory()}) {
@@ -210,7 +207,6 @@ public class DeliverItemsTask implements Task {
         }
         if (moved > 0) {
             delivered += moved;
-            ContainerAnimator.flash(level, destination);
             ledger.recordSnapshot(destination, container, level.getGameTime());
             if (requestId >= 0) {
                 ledger.fulfillRequest(requestId, moved);

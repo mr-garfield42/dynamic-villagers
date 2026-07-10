@@ -112,12 +112,12 @@ public class DepositToContainerTask implements Task {
             return Status.IN_PROGRESS;
         }
 
+        ContainerAnimator.flash(level, target); // opened, even if everything ends up kept
         boolean movedAnything = depositFrom(villager.getInventory(), container)
                 | depositFrom(essence.getExtraInventory(), container);
         ledger.recordSnapshot(target, container, level.getGameTime());
         if (movedAnything) {
             depositedAnything = true;
-            ContainerAnimator.flash(level, target);
         }
         if (carriedNonKept(villager, essence).isEmpty()) {
             return Status.DONE;

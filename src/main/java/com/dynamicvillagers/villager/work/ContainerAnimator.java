@@ -10,6 +10,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 import java.util.HashMap;
@@ -67,6 +68,16 @@ public final class ContainerAnimator {
         } else {
             if (state.getBlock() instanceof ChestBlock) {
                 level.blockEvent(pos, state.getBlock(), 1, open ? 1 : 0);
+                // a double chest renders its lid from one half's controller, which may be
+                // the partner block — swing both halves so the animation always shows
+                if (state.hasProperty(BlockStateProperties.CHEST_TYPE)
+                        && state.getValue(BlockStateProperties.CHEST_TYPE) != ChestType.SINGLE) {
+                    BlockPos partner = pos.relative(ChestBlock.getConnectedDirection(state));
+                    BlockState partnerState = level.getBlockState(partner);
+                    if (partnerState.getBlock() instanceof ChestBlock) {
+                        level.blockEvent(partner, partnerState.getBlock(), 1, open ? 1 : 0);
+                    }
+                }
             }
             sound = open ? SoundEvents.CHEST_OPEN : SoundEvents.CHEST_CLOSE;
         }

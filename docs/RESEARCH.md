@@ -168,6 +168,34 @@ chests, storage-deposit goal, teachable "custom commands", family trees, stats/X
 - **GameTest**: template ships a `gameTestServer` run config — usable for automated villager
   behavior tests later.
 
+## Structure templates (Phase 4 research, 2026-07-10)
+
+Verified against the recompiled 1.21.1/neoforge-21.1.235 sources in the Gradle cache
+(`StructureTemplate`, `StructureTemplateManager`, `JigsawBlockEntity`, `NbtUtils`).
+
+- **Loading**: `MinecraftServer.getStructureManager()` → `StructureTemplateManager`;
+  `get(ResourceLocation)` returns `Optional<StructureTemplate>` from
+  `data/<ns>/structure/*.nbt` (directory renamed to **singular** `structure` in 1.21;
+  our gametest arena `empty5x5.nbt` already ships there). Also `readStructure(CompoundTag)`
+  (parse raw NBT — handy for gametests) and `listTemplates()`.
+- **Reading contents**: `StructureTemplate.palettes` is **private with no accessor**, and
+  `filterBlocks(...)` only filters by a single `Block` type. The sanctioned read path is the
+  public NBT round-trip: `template.save(new CompoundTag())` → parse `size` (3 ints),
+  `palette` (list of `{Name, Properties}` — decode with
+  `NbtUtils.readBlockState(HolderGetter<Block>, CompoundTag)`, getter from
+  `level.holderLookup(Registries.BLOCK)`), `blocks` (list of `{pos: [x,y,z], state:
+  paletteIndex, nbt?}`). Multi-palette templates ("palettes" list, e.g. shipwrecks) — use
+  the first. This avoids an access transformer and the format is savegame-stable.
+- **Transforms**: `StructureTemplate.transform(BlockPos, Mirror, Rotation, BlockPos pivot)`
+  is public static for positions; `BlockState.rotate(Rotation)` for states;
+  `getSize(Rotation)` / `getBoundingBox(...)` public.
+- **Jigsaw normalization**: jigsaw block entities carry `final_state` as a string
+  (`JigsawBlockEntity.FINAL_STATE`); parse with `BlockStateParser.parseForBlock`. Skip
+  `minecraft:structure_void` (don't-care positions).
+- **Authoring**: templates saved by in-game structure blocks land in
+  `<world>/generated/<ns>/structures/`; copy into mod resources. Include `DataVersion`
+  (1.21.1 = 3955) so DFU leaves the file alone.
+
 ## Build/dev environment notes (this machine)
 
 - Portable JDK 21 (Temurin 21.0.11) at `%USERPROFILE%\.jdks\jdk-21.0.11+10` — **not on PATH**;

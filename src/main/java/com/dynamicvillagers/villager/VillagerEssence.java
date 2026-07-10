@@ -42,6 +42,7 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
     private MineSite mineSite;
     @Nullable
     private QuarrySite quarrySite;
+    private int assignedSiteId = -1; // construction site this villager was told to work; -1 = none
     private final SimpleContainer extraInventory = new SimpleContainer(EXTRA_SLOTS);
     private final VillagerMemory memory = new VillagerMemory();
     private final TaskQueue taskQueue = new TaskQueue();
@@ -107,6 +108,14 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
 
     public void setQuarrySite(@Nullable QuarrySite quarrySite) {
         this.quarrySite = quarrySite;
+    }
+
+    public int getAssignedSiteId() {
+        return assignedSiteId;
+    }
+
+    public void setAssignedSiteId(int siteId) {
+        this.assignedSiteId = siteId;
     }
 
     public long getNextTorchFetchTime() {
@@ -223,6 +232,7 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
             site.putLong("b", quarrySite.cornerB().asLong());
             tag.put("quarry_site", site);
         }
+        tag.putInt("assigned_site", assignedSiteId);
         tag.put("extra_inventory", extraInventory.createTag(provider));
         tag.put("memory_containers", memory.save());
         tag.put("memory_spots", memory.saveSpots());
@@ -248,6 +258,7 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
             CompoundTag site = tag.getCompound("quarry_site");
             quarrySite = new QuarrySite(BlockPos.of(site.getLong("a")), BlockPos.of(site.getLong("b")));
         }
+        assignedSiteId = tag.contains("assigned_site") ? tag.getInt("assigned_site") : -1;
         extraInventory.fromTag(tag.getList("extra_inventory", Tag.TAG_COMPOUND), provider);
         memory.load(tag.getList("memory_containers", Tag.TAG_COMPOUND));
         memory.loadSpots(tag.getCompound("memory_spots"));

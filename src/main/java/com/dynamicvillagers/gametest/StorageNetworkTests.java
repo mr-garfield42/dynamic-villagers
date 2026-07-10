@@ -270,6 +270,31 @@ public class StorageNetworkTests {
         });
     }
 
+    /**
+     * Regression (owner crash, 2026-07-10): snapshots merge same-kind stacks, so a chest
+     * holding several stacks of one item produces a record count above the vanilla stack
+     * size — which ItemStack's codec refuses ([1;99]), crashing the world save.
+     */
+    @GameTest(template = "empty5x5", batch = "dvStorageOversized")
+    public static void ledger_saves_merged_stacks_beyond_max_size(GameTestHelper helper) {
+        StorageLedger ledger = freshLedger(helper);
+        net.minecraft.world.SimpleContainer chest = new net.minecraft.world.SimpleContainer(27);
+        chest.setItem(0, new ItemStack(Items.COBBLESTONE, 64));
+        chest.setItem(1, new ItemStack(Items.COBBLESTONE, 64));
+        chest.setItem(2, new ItemStack(Items.COBBLESTONE, 64));
+        BlockPos pos = helper.absolutePos(CHEST);
+        ledger.recordSnapshot(pos, chest, helper.getLevel().getGameTime());
+
+        // before the fix this line threw IllegalStateException and killed the save
+        ledger.save(new net.minecraft.nbt.CompoundTag(), helper.getLevel().registryAccess());
+
+        StorageLedger.ContainerRecord record = ledger.getRecord(pos);
+        helper.assertTrue(record != null
+                        && record.count(stack -> stack.is(Items.COBBLESTONE)) == 192,
+                "the merged record should still know all 192 cobblestone");
+        helper.succeed();
+    }
+
     private static StorageLedger freshLedger(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         StorageLedger ledger = StorageLedger.get(level);

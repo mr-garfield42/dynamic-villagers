@@ -33,6 +33,25 @@ public final class WorkHelper {
     }
 
     /**
+     * Walks a couple of blocks perpendicular to the sight line — the polite alternative to
+     * mining your own fresh wall when it blocks the view of the next target. Alternates
+     * sides every second (via {@code seed}) so a dead end on one side doesn't trap the loop.
+     */
+    public static void sidestep(Villager villager, BlockPos target, int seed) {
+        Vec3 toTarget = Vec3.atCenterOf(target).subtract(villager.position());
+        Vec3 side = new Vec3(-toTarget.z, 0.0, toTarget.x);
+        if (side.lengthSqr() < 1.0E-4) {
+            side = new Vec3(1.0, 0.0, 0.0);
+        }
+        side = side.normalize().scale(2.0);
+        if ((seed / 20) % 2 == 1) {
+            side = side.reverse();
+        }
+        BlockPos spot = BlockPos.containing(villager.position().add(side));
+        villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(spot, WALK_SPEED, 0));
+    }
+
+    /**
      * The first block standing between the villager's eyes and the target, or null when the
      * target itself is hit. Players cannot mine, place, or open things through other blocks
      * (design rule #2) — work paths use this to clear or reroute instead of cheating through.

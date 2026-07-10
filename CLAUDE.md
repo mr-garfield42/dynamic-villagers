@@ -607,6 +607,60 @@ You may update and modify this document with any useful information you find whi
   smelt in furnaces — deferred to the crafting/economy phases. Furnaces are deliberately NOT
   storage (`dynamicvillagers:storage_containers` tag); when smelting lands they become
   workstations with their own handling.
+- **Vanilla village structures** (2026-07-10): the buildings villagers construct are the
+  vanilla village structures (wiki: Village/Structure/Blueprints), loaded directly from
+  `minecraft:village/...` templates — do NOT design custom houses. Mod-authored templates
+  are allowed only as gametest fixtures / debug scaffolding (e.g. `starter_shelter`),
+  never as village content.
+
+## Scheduled next after Phase 4 (owner, 2026-07-10)
+- **Hunter role** — see the idea entry below; pull it forward as the first work item once
+  Phase 4 closes (killing + cooking + depositing loop; sales wait for Phase 6).
+- **Lumberjack: plant extra saplings near felled trees** — beyond the current replant-on-
+  the-stump, plant spare saplings on nearby valid soil around recently cut trees so wooded
+  areas thicken instead of merely holding steady.
+
+## Owner ideas for future phases (not yet scheduled, 2026-07-10)
+
+Captured for later planning — do not start implementing until a phase plan picks these up.
+
+- **Procedural village/villager names.** Owner's explicit design guidance: don't store a
+  name list, generate names from small prefix/suffix pools instead — tiny memory footprint,
+  no duplicate-list maintenance, easy to bias by context.
+  - Village names: prefix + suffix (e.g. `Oak/River/Stone/Iron/Green/Ash/Wolf/Red/Pine/Fox/
+    Black/High` + `dale/brook/ford/haven/cross/field/vale/crest/wick/ridge/moor/hollow` →
+    `Oakbrook`, `Riverdale`, `Stonehaven`, `Foxhollow`...). 100×100 pools = 10,000 unique
+    names from 200 stored strings.
+    - Weight/select pools by biome so names fit their environment (e.g. `Snow`+`haven` in
+      snowy biomes, `Sand`+`reach` in desert) — owner suggested going further and building
+      culture-specific pools per biome group (Plains, Taiga, Desert, Savanna, Jungle, Swamp).
+  - Villager names: same generative approach, presumably its own prefix/suffix (or
+    first/last) pools — not detailed yet, decide alongside village names.
+  - Natural home: Phase 5 (Population), where villages first need persistent identity beyond
+    "the nearest bell."
+- **Village inspector UI via the Debug Stick.** Right-click a **bell** with the existing
+  Villager Debug Wand (`DVItems.DEBUG_WAND`) to open a village-level panel (population, job
+  breakdown, house count, etc.) — the village-scoped sibling of the current per-villager
+  debug screen (`VillagerDebugScreen`). Depends on there being an actual `Village`/
+  `VillageManager` SavedData to query (Phase 5), not just the per-villager `VillageAnchor`
+  used through Phase 3.
+- **New role: Builder.** Constructs designated structures — this *is* Phase 4
+  (Construction); no new roadmap phase needed, just implement the role there alongside the
+  blueprint system.
+- **New role: Hunter.** Kills animals, cooks the meat (furnace or campfire — ties directly
+  into the standing smelting/cooking directive above), and supplies/sells that food to other
+  villagers alongside the Farmer. Gathering-shaped work (natural fit as a Phase 2-style
+  role, added after Phase 2 closed) but the "sell to other villagers" half needs Phase 6
+  economy (wages/buying/selling) to mean anything — implement the killing+cooking+depositing
+  loop whenever convenient, wire in actual sales once Phase 6 exists.
+- **Compatibility with Improved Village Placement**
+  (https://modrinth.com/mod/improved-village-placement,
+  https://github.com/Apollounknowndev/improved-village-placement). Owner is open to
+  eventually merging it into Dynamic Villagers rather than just depending on it. Needs the
+  same research-before-coding pass as Guard Villagers/Thief got (see docs/RESEARCH.md) before
+  any integration work: what it actually changes about village worldgen placement, whether
+  it exposes hooks/events, and whether its logic could just become part of our village
+  generation once merged. Not yet researched — do that first when this is picked up.
 
 ## Pinned versions
 - Minecraft 1.21.1, NeoForge 21.1.235, Java 21, ModDevGradle 2.0.141, Parchment 1.21/2024.11.10
@@ -638,8 +692,8 @@ You may update and modify this document with any useful information you find whi
   safely, survives brain rebuilds, composes with GV/VO/Thief.
 - Architecture decision (Phase 1): enhance vanilla `minecraft:villager` (no custom entity);
   per-villager state in one codec-serialized NeoForge data attachment; village-level state in
-  `SavedData`. See docs/PHASE1_PLAN.md, docs/PHASE2_PLAN.md (both complete) and
-  docs/PHASE3_PLAN.md (current).
+  `SavedData`. See docs/PHASE1_PLAN.md, docs/PHASE2_PLAN.md, docs/PHASE3_PLAN.md (all
+  complete) and docs/PHASE4_PLAN.md (current).
 
 ## Dev environment (this machine)
 - JDK 21 is portable at `%USERPROFILE%\.jdks\jdk-21.0.11+10` (not on PATH). Before Gradle:

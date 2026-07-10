@@ -1,6 +1,7 @@
 package com.dynamicvillagers;
 
 import com.dynamicvillagers.command.DVCommands;
+import com.dynamicvillagers.construction.Blueprints;
 import com.dynamicvillagers.item.DVItems;
 import com.dynamicvillagers.network.DVNetwork;
 import com.dynamicvillagers.registry.DVAttachments;
@@ -33,6 +34,8 @@ public class DynamicVillagers {
         NeoForge.EVENT_BUS.addListener(DVItems::onRightClickBlock);
         NeoForge.EVENT_BUS.addListener(ContainerAnimator::onLevelTick);
         NeoForge.EVENT_BUS.addListener(DVCommands::onRegisterCommands);
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.AddReloadListenerEvent event) ->
+                Blueprints.clearCache());
 
         LOGGER.info("Dynamic Villagers initializing");
     }

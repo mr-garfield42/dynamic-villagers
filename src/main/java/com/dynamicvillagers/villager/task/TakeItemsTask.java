@@ -118,7 +118,6 @@ public class TakeItemsTask implements Task {
             }
         }
         int toTake = Math.min(needed, Math.max(0, matching - untouchable));
-        boolean tookAnything = false;
         for (int i = 0; i < container.getContainerSize() && toTake > 0; i++) {
             ItemStack stack = container.getItem(i);
             if (!stack.isEmpty() && predicate.test(stack)) {
@@ -131,13 +130,12 @@ public class TakeItemsTask implements Task {
                     stack.shrink(moved);
                     container.setChanged();
                     toTake -= moved;
-                    tookAnything = true;
                 }
             }
         }
-        if (tookAnything) {
-            ContainerAnimator.flash(level, target);
-        }
+        // opening the chest swings the lid whether or not anything matched — players'
+        // lids do not stay shut just because they leave empty-handed
+        ContainerAnimator.flash(level, target);
         ledger.release(target, self);
         ledger.recordSnapshot(target, container, now); // the visit is knowledge, stale or not
         visited.add(target);

@@ -22,6 +22,7 @@ public final class TaskTypes {
         register(TakeItemsTask.TYPE, TakeItemsTask::load);
         register(TillSoilTask.TYPE, TillSoilTask::load);
         register(DeliverItemsTask.TYPE, DeliverItemsTask::load);
+        register(PlaceStateTask.TYPE, PlaceStateTask::load);
     }
 
     public static void register(String typeId, BiFunction<CompoundTag, HolderLookup.Provider, Task> loader) {
@@ -41,7 +42,14 @@ public final class TaskTypes {
             DynamicVillagers.LOGGER.warn("Dropping task of unknown type '{}'", tag.getString("type"));
             return null;
         }
-        return loader.apply(tag, provider);
+        try {
+            return loader.apply(tag, provider);
+        } catch (Exception e) {
+            // one corrupt task must not take the whole villager attachment down with it —
+            // that turns into "the entity silently fails to restore after a reload"
+            DynamicVillagers.LOGGER.error("Dropping unloadable task of type '{}'", tag.getString("type"), e);
+            return null;
+        }
     }
 
     private TaskTypes() {

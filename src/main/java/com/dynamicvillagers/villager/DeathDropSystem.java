@@ -1,5 +1,6 @@
 package com.dynamicvillagers.villager;
 
+import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.village.StorageLedger;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.SimpleContainer;
@@ -20,6 +21,7 @@ public final class DeathDropSystem {
             spill(event, villager, villager.getInventory());
             spill(event, villager, VillagerEssence.get(villager).getExtraInventory());
             StorageLedger.get(level).releaseAll(villager.getUUID()); // dead villagers hold no claims
+            ConstructionLedger.get(level).releaseClaims(villager.getUUID());
         }
     }
 
