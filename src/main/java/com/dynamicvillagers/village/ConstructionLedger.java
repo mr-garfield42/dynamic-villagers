@@ -68,6 +68,7 @@ public class ConstructionLedger extends SavedData {
         private BlockPos staging; // deliver-to container for this site's material requests
         private final Set<BlockPos> scaffold = new HashSet<>(); // temporary dirt we must tear down
         private final Map<BlockPos, Claim> claims = new HashMap<>();
+        private final Map<String, Integer> requests = new HashMap<>(); // item filter → request id
 
         private ConstructionSite(int id, ResourceLocation templateId, BlockPos origin,
                                  Rotation rotation, long created) {
@@ -109,6 +110,11 @@ public class ConstructionLedger extends SavedData {
 
         public Set<BlockPos> scaffold() {
             return Collections.unmodifiableSet(scaffold);
+        }
+
+        /** Material requests this site has posted on the storage ledger, by item filter. */
+        public Map<String, Integer> requests() {
+            return Collections.unmodifiableMap(requests);
         }
 
         /** Free for this villager to work: unclaimed, expired, or its own claim. */
@@ -178,6 +184,18 @@ public class ConstructionLedger extends SavedData {
     public void setStaging(ConstructionSite site, @Nullable BlockPos staging) {
         site.staging = staging == null ? null : staging.immutable();
         setDirty();
+    }
+
+    public void setSiteRequest(ConstructionSite site, String filter, int requestId) {
+        site.requests.put(filter, requestId);
+        setDirty();
+    }
+
+    public void clearSiteRequests(ConstructionSite site) {
+        if (!site.requests.isEmpty()) {
+            site.requests.clear();
+            setDirty();
+        }
     }
 
     public void addScaffold(ConstructionSite site, BlockPos pos) {
@@ -252,6 +270,14 @@ public class ConstructionLedger extends SavedData {
                 claims.add(claimTag);
             }
             siteTag.put("claims", claims);
+            ListTag requests = new ListTag();
+            for (Map.Entry<String, Integer> entry : site.requests.entrySet()) {
+                CompoundTag requestTag = new CompoundTag();
+                requestTag.putString("filter", entry.getKey());
+                requestTag.putInt("id", entry.getValue());
+                requests.add(requestTag);
+            }
+            siteTag.put("requests", requests);
             list.add(siteTag);
         }
         tag.put("sites", list);
@@ -291,6 +317,11 @@ public class ConstructionLedger extends SavedData {
                 if (claim instanceof CompoundTag claimTag) {
                     site.claims.put(BlockPos.of(claimTag.getLong("pos")),
                             new Claim(claimTag.getUUID("holder"), claimTag.getLong("expiry")));
+                }
+            }
+            for (Tag request : siteTag.getList("requests", Tag.TAG_COMPOUND)) {
+                if (request instanceof CompoundTag requestTag) {
+                    site.requests.put(requestTag.getString("filter"), requestTag.getInt("id"));
                 }
             }
             ledger.sites.add(site);

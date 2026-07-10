@@ -409,6 +409,74 @@ public class ConstructionTests {
         });
     }
 
+    /** 4.3: materials the storage network lacks become requests aimed at the staging chest. */
+    @GameTest(template = "empty11x11", timeoutTicks = 2400, batch = "dvConstructionRequests")
+    public static void site_posts_requests_for_unavailable_materials(GameTestHelper helper) {
+        StorageLedger storage = StorageLedger.get(helper.getLevel());
+        storage.clear();
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+
+        BlockPos chestRel = new BlockPos(9, 2, 1);
+        helper.setBlock(chestRel, Blocks.CHEST);
+        BlockPos chestAbs = helper.absolutePos(chestRel);
+
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getMemory().rememberContainer(chestAbs, 0);
+        ConstructionLedger.ConstructionSite site = ledger.addSite(SHELTER,
+                helper.absolutePos(new BlockPos(3, 2, 3)), Rotation.NONE,
+                helper.getLevel().getGameTime());
+        ledger.setStaging(site, chestAbs);
+        essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedSiteId(site.id());
+
+        helper.succeedWhen(() -> {
+            StorageLedger.MaterialRequest planks = storage.allRequests().stream()
+                    .filter(request -> request.filter().equals("item:minecraft:oak_planks"))
+                    .findFirst().orElse(null);
+            helper.assertTrue(planks != null,
+                    "the site should request the planks the network lacks");
+            helper.assertTrue(planks.deliverTo().equals(chestAbs),
+                    "the request should deliver to the staging chest");
+            helper.assertTrue(site.requests().containsKey("item:minecraft:oak_planks"),
+                    "the site should track its posted request");
+        });
+    }
+
+    /** 4.3 end-to-end: another villager's haul lands at staging and becomes walls. */
+    @GameTest(template = "empty11x11", timeoutTicks = 6000, batch = "dvConstructionSupply")
+    public static void hauled_materials_feed_the_site(GameTestHelper helper) {
+        StorageLedger.get(helper.getLevel()).clear();
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+
+        BlockPos chestRel = new BlockPos(9, 2, 1);
+        helper.setBlock(chestRel, Blocks.CHEST);
+        BlockPos chestAbs = helper.absolutePos(chestRel);
+
+        Villager builder = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
+        VillagerEssence builderEssence = VillagerEssence.get(builder);
+        builderEssence.getMemory().rememberContainer(chestAbs, 0);
+        ConstructionLedger.ConstructionSite site = ledger.addSite(SHELTER,
+                helper.absolutePos(new BlockPos(3, 2, 3)), Rotation.NONE,
+                helper.getLevel().getGameTime());
+        ledger.setStaging(site, chestAbs);
+        builderEssence.setRole(VillagerRole.BUILDER);
+        builderEssence.setAssignedSiteId(site.id());
+
+        // the supplier: a lumberjack carrying planks — via request delivery or a plain
+        // deposit, its haul must end up in the staging chest where the builder shops
+        Villager supplier = helper.spawn(EntityType.VILLAGER, new BlockPos(9, 2, 9));
+        VillagerEssence supplierEssence = VillagerEssence.get(supplier);
+        supplierEssence.getMemory().rememberContainer(chestAbs, 0);
+        supplierEssence.getExtraInventory().setItem(0, new ItemStack(Items.OAK_PLANKS, 64));
+        supplierEssence.setRole(VillagerRole.LUMBERJACK);
+
+        helper.succeedWhen(() ->
+                helper.assertBlockPresent(Blocks.OAK_PLANKS, new BlockPos(3, 2, 3)));
+    }
+
     /** 4.2: bad placements are refused at designation time, not discovered by a builder. */
     @GameTest(template = "empty11x11", batch = "dvConstructionValidate")
     public static void site_validation_rejects_cliffs_and_overlaps(GameTestHelper helper) {

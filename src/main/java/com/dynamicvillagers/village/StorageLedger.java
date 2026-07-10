@@ -392,6 +392,17 @@ public class StorageLedger extends SavedData {
         return Collections.unmodifiableList(requests);
     }
 
+    /** @return the open request with this id, or null when fulfilled/cancelled. */
+    @Nullable
+    public MaterialRequest getRequest(int id) {
+        for (MaterialRequest request : requests) {
+            if (request.id() == id) {
+                return request;
+            }
+        }
+        return null;
+    }
+
     public boolean cancelRequest(int id) {
         boolean removed = requests.removeIf(request -> request.id == id);
         if (removed) {

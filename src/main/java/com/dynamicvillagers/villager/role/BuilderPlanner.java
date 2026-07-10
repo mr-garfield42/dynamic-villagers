@@ -4,6 +4,7 @@ import com.dynamicvillagers.construction.BlockRequirements;
 import com.dynamicvillagers.construction.Blueprint;
 import com.dynamicvillagers.construction.Blueprints;
 import com.dynamicvillagers.construction.SiteValidator;
+import com.dynamicvillagers.registry.DVTags;
 import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.village.VillageAnchor;
@@ -53,6 +54,7 @@ import java.util.function.Predicate;
 public class BuilderPlanner implements RolePlanner {
     public static final int WORK_BATCH = 12;
     public static final String SCAFFOLD_FILTER = "scaffold"; // dirt or cobblestone
+    private static final String CHEST_FILTER = "item:minecraft:chest";
     private static final int MIN_FREE_SLOTS = 4;
     private static final int FETCH_COOLDOWN = 600; // between restock attempts while short
     private static final int FETCH_CAP = 64; // one errand's worth of one material
@@ -138,6 +140,7 @@ public class BuilderPlanner implements RolePlanner {
                     return planScaffoldTeardown(essence, site); // no mess left behind
                 }
                 ledger.setStatus(site, ConstructionLedger.Status.DONE);
+                cancelSiteRequests(level, ledger, site); // the board owes this site nothing now
                 if (essence.getAssignedSiteId() == site.id()) {
                     essence.setAssignedSiteId(-1);
                 }
@@ -179,27 +182,34 @@ public class BuilderPlanner implements RolePlanner {
         TaskQueue queue = essence.getTaskQueue();
         boolean planned = false;
         if (!missing.isEmpty() && now >= essence.getNextToolFetchTime()) {
+            essence.setNextToolFetchTime(now + FETCH_COOLDOWN); // one restock attempt per window
             // clearing our own line of sight drops materials around the site — glean
             // those before walking to storage (they are usually the missing items)
             List<ItemEntity> drops = level.getEntitiesOfClass(ItemEntity.class,
                     siteBounds(blueprint, site),
                     drop -> missing.containsKey(drop.getItem().getItem()));
             if (!drops.isEmpty()) {
-                essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
                 queue.enqueue(new PickUpItemsTask(drops.getFirst().blockPosition(), PICKUP_RADIUS));
                 planned = true;
-            } else if (!essence.getMemory().knownContainers().isEmpty()) {
-                // one trip stocks the whole build: top up every material the blueprint
-                // needs, not just this batch's — walking back per item kind wastes days
-                essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
-                for (Map.Entry<Item, Integer> requirement : blueprint.requirements().entrySet()) {
-                    int wanted = Math.min(FETCH_CAP, requirement.getValue());
-                    if (essence.countItems(villager, stack -> stack.is(requirement.getKey())) < wanted) {
-                        queue.enqueue(new TakeItemsTask(
-                                itemFilterSpec(requirement.getKey()), wanted));
-                        planned = true;
+            } else {
+                if (ensureStaging(level, villager, essence, ledger, site, blueprint, now)) {
+                    planned = true;
+                }
+                if (!essence.getMemory().knownContainers().isEmpty()) {
+                    // one trip stocks the whole build: top up every material the blueprint
+                    // needs, not just this batch's — walking back per item kind wastes days
+                    for (Map.Entry<Item, Integer> requirement : blueprint.requirements().entrySet()) {
+                        int wanted = Math.min(FETCH_CAP, requirement.getValue());
+                        if (essence.countItems(villager, stack -> stack.is(requirement.getKey())) < wanted) {
+                            queue.enqueue(new TakeItemsTask(
+                                    itemFilterSpec(requirement.getKey()), wanted));
+                            planned = true;
+                        }
                     }
                 }
+                // 4.3: materials the network doesn't hold become requests on the board —
+                // gatherers redirect matching produce and haulers deliver, all Phase 3 code
+                postRequests(level, villager, essence, ledger, site, blueprint, missing, now);
             }
         }
         if (!ready.isEmpty()) {
@@ -256,6 +266,115 @@ public class BuilderPlanner implements RolePlanner {
             keep.add(itemFilterSpec(item));
         }
         return keep;
+    }
+
+    /**
+     * 4.3: keeps the site's staging container real — the deliver-to point for its material
+     * requests. The builder places a carried chest on the ring just outside the footprint,
+     * or fetches one from storage; with neither, requests fall back to public storage.
+     */
+    private static boolean ensureStaging(ServerLevel level, Villager villager, VillagerEssence essence,
+                                         ConstructionLedger ledger,
+                                         ConstructionLedger.ConstructionSite site,
+                                         Blueprint blueprint, long now) {
+        BlockPos staging = site.staging();
+        if (staging != null) {
+            if (level.getBlockState(staging).is(DVTags.STORAGE_CONTAINERS)) {
+                return false; // staging stands — nothing to do
+            }
+            ledger.setStaging(site, null); // broken or never placed — forget it
+        }
+        Predicate<ItemStack> chest = ItemFilter.parse(CHEST_FILTER);
+        if (essence.hasItem(villager, chest)) {
+            BlockPos spot = stagingSpot(level, site, blueprint);
+            if (spot == null) {
+                return false;
+            }
+            ledger.setStaging(site, spot);
+            essence.getTaskQueue().enqueue(new PlaceBlockTask(spot, CHEST_FILTER));
+            return true;
+        }
+        if (StorageLedger.get(level).findSource(site.origin(), villager.blockPosition(),
+                villager.getUUID(), chest, now, Set.of()) != null) {
+            essence.getTaskQueue().enqueue(new TakeItemsTask(CHEST_FILTER, 1));
+            return true;
+        }
+        return false; // no chest to be had — requests will deliver to public storage instead
+    }
+
+    /** First free spot on the ring just outside the footprint, at origin height. */
+    @Nullable
+    private static BlockPos stagingSpot(ServerLevel level, ConstructionLedger.ConstructionSite site,
+                                        Blueprint blueprint) {
+        Vec3i size = blueprint.size(site.rotation());
+        BlockPos origin = site.origin();
+        int y = origin.getY();
+        for (int x = -1; x <= size.getX(); x++) {
+            for (int z = -1; z <= size.getZ(); z++) {
+                if (x != -1 && x != size.getX() && z != -1 && z != size.getZ()) {
+                    continue; // interior — ring cells only
+                }
+                BlockPos pos = origin.offset(x, 0, z).atY(y);
+                BlockPos below = pos.below();
+                BlockState state = level.getBlockState(pos);
+                if ((state.isAir() || state.canBeReplaced())
+                        && level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)
+                        && !site.scaffold().contains(pos)) {
+                    return pos.immutable();
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Posts one open request per missing item kind the storage network cannot supply. */
+    private static void postRequests(ServerLevel level, Villager villager, VillagerEssence essence,
+                                     ConstructionLedger ledger,
+                                     ConstructionLedger.ConstructionSite site,
+                                     Blueprint blueprint, Map<Item, Integer> missing, long now) {
+        StorageLedger storage = StorageLedger.get(level);
+        BlockPos deliverTo = site.staging() != null
+                && level.getBlockState(site.staging()).is(DVTags.STORAGE_CONTAINERS)
+                ? site.staging() : nearestPublicStorage(storage, site.origin());
+        if (deliverTo == null) {
+            return; // nowhere for a hauler to put things down — try again once staging exists
+        }
+        for (Map.Entry<Item, Integer> entry : missing.entrySet()) {
+            Item item = entry.getKey();
+            String spec = itemFilterSpec(item);
+            Integer existing = site.requests().get(spec);
+            if (existing != null && storage.getRequest(existing) != null) {
+                continue; // already on the board
+            }
+            if (storage.findSource(site.origin(), villager.blockPosition(), villager.getUUID(),
+                    stack -> stack.is(item), now, Set.of()) != null) {
+                continue; // the network has it — fetching handles this kind
+            }
+            int carried = essence.countItems(villager, stack -> stack.is(item));
+            int count = Math.min(FETCH_CAP, Math.max(entry.getValue(),
+                    blueprint.requirements().getOrDefault(item, 0) - carried));
+            StorageLedger.MaterialRequest request = storage.addRequest(spec, count, deliverTo, now);
+            ledger.setSiteRequest(site, spec, request.id());
+        }
+    }
+
+    /** Withdraws every request this site posted — also used by /dv build cancel. */
+    public static void cancelSiteRequests(ServerLevel level, ConstructionLedger ledger,
+                                          ConstructionLedger.ConstructionSite site) {
+        StorageLedger storage = StorageLedger.get(level);
+        for (int requestId : site.requests().values()) {
+            storage.cancelRequest(requestId);
+        }
+        ledger.clearSiteRequests(site);
+    }
+
+    @Nullable
+    private static BlockPos nearestPublicStorage(StorageLedger storage, BlockPos anchor) {
+        return storage.recordsNear(anchor, StorageLedger.NETWORK_RANGE).stream()
+                .filter(entry -> entry.getValue().designation() == StorageLedger.Designation.PUBLIC)
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
     }
 
     /** Bottom-layer columns still hanging in the air, bounded by depth and batch size. */

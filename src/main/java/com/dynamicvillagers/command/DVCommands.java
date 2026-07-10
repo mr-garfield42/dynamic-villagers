@@ -149,7 +149,11 @@ public final class DVCommands {
                         .then(Commands.literal("assign")
                                 .then(Commands.argument("target", EntityArgument.entity())
                                         .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                                                .executes(DVCommands::assignBuilder)))))
+                                                .executes(DVCommands::assignBuilder))))
+                        .then(Commands.literal("staging")
+                                .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                                .executes(DVCommands::setBuildStaging)))))
                 .then(Commands.literal("tasks")
                         .then(Commands.argument("target", EntityArgument.entity())
                                 .executes(DVCommands::listTasks)))
@@ -439,13 +443,41 @@ public final class DVCommands {
     }
 
     private static int cancelBuildSite(CommandContext<CommandSourceStack> ctx) {
+        ServerLevel level = ctx.getSource().getLevel();
         int id = IntegerArgumentType.getInteger(ctx, "id");
-        if (ConstructionLedger.get(ctx.getSource().getLevel()).cancelSite(id)) {
+        ConstructionLedger ledger = ConstructionLedger.get(level);
+        ConstructionLedger.ConstructionSite site = ledger.getSite(id);
+        if (site != null) {
+            com.dynamicvillagers.villager.role.BuilderPlanner.cancelSiteRequests(level, ledger, site);
+        }
+        if (ledger.cancelSite(id)) {
             ctx.getSource().sendSuccess(() -> Component.literal("site #" + id + " cancelled"), false);
             return 1;
         }
         ctx.getSource().sendFailure(Component.literal("no site #" + id));
         return 0;
+    }
+
+    /** Points a site's material requests at a specific chest instead of public storage. */
+    private static int setBuildStaging(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerLevel level = ctx.getSource().getLevel();
+        int id = IntegerArgumentType.getInteger(ctx, "id");
+        BlockPos pos = BlockPosArgument.getLoadedBlockPos(ctx, "pos");
+        ConstructionLedger ledger = ConstructionLedger.get(level);
+        ConstructionLedger.ConstructionSite site = ledger.getSite(id);
+        if (site == null) {
+            ctx.getSource().sendFailure(Component.literal("no site #" + id));
+            return 0;
+        }
+        if (!level.getBlockState(pos).is(DVTags.STORAGE_CONTAINERS)) {
+            ctx.getSource().sendFailure(Component.literal(
+                    pos.toShortString() + " is not a storage container (chest or barrel)"));
+            return 0;
+        }
+        ledger.setStaging(site, pos);
+        ctx.getSource().sendSuccess(() -> Component.literal(
+                "site #%d staging set to %s".formatted(id, pos.toShortString())), false);
+        return 1;
     }
 
     /** The shortfall report: what the blueprint needs vs. what the storage network knows of. */

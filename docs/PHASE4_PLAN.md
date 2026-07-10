@@ -19,8 +19,14 @@ no ground within `MAX_FOUNDATION_DEPTH` (marker + `/dv build add`, `force` overr
 builders pillar hanging bottom-layer columns down to sturdy ground with dirt/cobble before
 and while walls rise (clear work already fell out of the 4.1 diff). Owner decisions along
 the way: builders are **assigned-only** (no adopting open sites until Phase 5), and the
-profession-integration design is recorded in CLAUDE.md. Still open: 4.3 staging + requests,
-rest of 4.4, 4.6 paths, 4.7 repair, 4.8 gate, two-builder sharing gametest. Findings so far:
+profession-integration design is recorded in CLAUDE.md (research complete — see
+docs/RESEARCH_PROFESSIONS.md). 4.3 landed too: builders keep a **staging chest** real
+(place a carried one on the ring outside the footprint, fetch one, or fall back to public
+storage), post one capped request per material kind the network cannot supply (tracked on
+the site, cancelled at DONE and by `/dv build cancel`), and `/dv build staging <id> <pos>`
+points requests at a chest of your choice. Still open: rest of 4.4 (farmland/water +
+vanilla-house completion gametest), 4.6 paths, 4.7 repair, 4.8 gate, two-builder sharing
+gametest. Findings so far:
 - A builder clearing its own line of sight (mining a just-placed block to see a farther
   target) can strand material drops; the planner now **gleans matching drops inside the
   site bounds** before walking to storage. Proper attachable/interior ordering (4.4) and
