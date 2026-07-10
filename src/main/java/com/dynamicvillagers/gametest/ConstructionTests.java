@@ -3,6 +3,7 @@ package com.dynamicvillagers.gametest;
 import com.dynamicvillagers.DynamicVillagers;
 import com.dynamicvillagers.construction.BlockRequirements;
 import com.dynamicvillagers.construction.Blueprint;
+import com.dynamicvillagers.construction.SiteValidator;
 import com.dynamicvillagers.construction.Blueprints;
 import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.village.StorageLedger;
@@ -230,6 +231,10 @@ public class ConstructionTests {
         essence.getExtraInventory().setItem(1, new ItemStack(Items.OAK_LOG, 16));
         essence.getExtraInventory().setItem(2, new ItemStack(Items.OAK_SLAB, 32));
         essence.getExtraInventory().setItem(3, new ItemStack(Items.TORCH, 4));
+        essence.getExtraInventory().setItem(4, new ItemStack(Items.DIRT, 32)); // foundation fill
+
+        // a pothole under the footprint: 4.2 foundation work must fill it before walls rise
+        helper.setBlock(new BlockPos(5, 1, 5), Blocks.AIR);
 
         ConstructionLedger.ConstructionSite site = ledger.addSite(SHELTER,
                 helper.absolutePos(new BlockPos(3, 2, 3)), Rotation.NONE,
@@ -243,6 +248,7 @@ public class ConstructionTests {
             helper.assertBlockPresent(Blocks.OAK_SLAB, new BlockPos(5, 5, 5));   // roof center
             helper.assertBlockPresent(Blocks.TORCH, new BlockPos(4, 3, 4));      // interior torch
             helper.assertBlockNotPresent(Blocks.OAK_PLANKS, new BlockPos(5, 3, 7)); // doorway gap
+            helper.assertBlockPresent(Blocks.DIRT, new BlockPos(5, 1, 5)); // 4.2 foundation fill
             helper.assertTrue(site.status() == ConstructionLedger.Status.DONE,
                     "the site should be marked DONE");
             helper.assertTrue(essence.getAssignedSiteId() == -1,
@@ -269,6 +275,7 @@ public class ConstructionTests {
         chest.setItem(0, new ItemStack(Items.OAK_PLANKS, 64));
         chest.setItem(1, new ItemStack(Items.OAK_LOG, 16));
         chest.setItem(2, new ItemStack(Items.OAK_SLAB, 32));
+        chest.setItem(4, new ItemStack(Items.DIRT, 64)); // foundation fill
         // deliberately NO torches: the shelter's interior torch cannot be built yet
 
         Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
@@ -351,6 +358,7 @@ public class ConstructionTests {
         essence.getExtraInventory().setItem(0, new ItemStack(Items.OAK_PLANKS, 16));
         essence.getExtraInventory().setItem(1, new ItemStack(Items.WHITE_BED, 1)); // exactly one
         essence.getExtraInventory().setItem(2, new ItemStack(Items.OAK_DOOR, 1));  // exactly one
+        essence.getExtraInventory().setItem(3, new ItemStack(Items.DIRT, 16));     // foundation fill
 
         ConstructionLedger.ConstructionSite site = ledger.addSite(
                 ResourceLocation.fromNamespaceAndPath(DynamicVillagers.MOD_ID, "fixture_hut"),
@@ -399,6 +407,28 @@ public class ConstructionTests {
             helper.assertTrue(site.scaffold().isEmpty(),
                     "every scaffold block should be torn down again");
         });
+    }
+
+    /** 4.2: bad placements are refused at designation time, not discovered by a builder. */
+    @GameTest(template = "empty11x11", batch = "dvConstructionValidate")
+    public static void site_validation_rejects_cliffs_and_overlaps(GameTestHelper helper) {
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+        Blueprint blueprint = Blueprints.load(helper.getLevel(), SHELTER);
+
+        String floating = SiteValidator.validate(helper.getLevel(), ledger, blueprint,
+                helper.absolutePos(new BlockPos(3, 7, 3)), Rotation.NONE);
+        helper.assertTrue(floating != null,
+                "a site hanging far above ground should be refused");
+
+        ledger.addSite(SHELTER, helper.absolutePos(new BlockPos(3, 2, 3)), Rotation.NONE,
+                helper.getLevel().getGameTime());
+        String overlapping = SiteValidator.validate(helper.getLevel(), ledger, blueprint,
+                helper.absolutePos(new BlockPos(5, 2, 5)), Rotation.NONE);
+        helper.assertTrue(overlapping != null, "an overlapping site should be refused");
+
+        ledger.clear();
+        helper.succeed();
     }
 
     private static ListTag intList(int x, int y, int z) {

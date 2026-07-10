@@ -2,6 +2,7 @@ package com.dynamicvillagers.item;
 
 import com.dynamicvillagers.construction.Blueprint;
 import com.dynamicvillagers.construction.Blueprints;
+import com.dynamicvillagers.construction.SiteValidator;
 import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.role.VillagerRole;
@@ -72,6 +73,13 @@ public class BuildingMarkerItem extends SiteMarkerItem {
         }
         BlockPos origin = context.getClickedPos().relative(context.getClickedFace());
         Rotation rotation = rotation(stack);
+        String error = SiteValidator.validate(level, ConstructionLedger.get(level),
+                blueprint, origin, rotation);
+        if (error != null) {
+            player.displayClientMessage(Component.literal(
+                    "Site refused: " + error + " (/dv build add ... force overrides)"), true);
+            return InteractionResult.FAIL;
+        }
         ConstructionLedger.ConstructionSite site = ConstructionLedger.get(level)
                 .addSite(templateId, origin, rotation, level.getGameTime());
         VillagerEssence essence = VillagerEssence.get(villager);

@@ -3,6 +3,7 @@ package com.dynamicvillagers.villager.role;
 import com.dynamicvillagers.construction.BlockRequirements;
 import com.dynamicvillagers.construction.Blueprint;
 import com.dynamicvillagers.construction.Blueprints;
+import com.dynamicvillagers.construction.SiteValidator;
 import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.village.VillageAnchor;
@@ -78,6 +79,14 @@ public class BuilderPlanner implements RolePlanner {
 
         long now = level.getGameTime();
         UUID self = villager.getUUID();
+
+        // 4.2: the ground comes first — pillar hanging footprint columns down to sturdy
+        // ground with fill material before (and while) the walls rise
+        List<BlockPos> foundation = foundationWork(level, site, blueprint, self, now);
+        if (!foundation.isEmpty() && planFoundation(villager, essence, ledger, site, foundation, now)) {
+            return true;
+        }
+
         List<Blueprint.PlannedBlock> batch = new ArrayList<>();
         boolean scannedAll = true;
         boolean skipped = false;
@@ -124,7 +133,7 @@ public class BuilderPlanner implements RolePlanner {
 
         if (batch.isEmpty()) {
             pruneScaffold(level, ledger, site);
-            if (scannedAll && !skipped) {
+            if (scannedAll && !skipped && foundation.isEmpty()) {
                 if (!site.scaffold().isEmpty()) {
                     return planScaffoldTeardown(essence, site); // no mess left behind
                 }
@@ -242,10 +251,62 @@ public class BuilderPlanner implements RolePlanner {
             return KEEP_BASE;
         }
         List<String> keep = new ArrayList<>(KEEP_BASE);
+        keep.add(SCAFFOLD_FILTER); // foundation/scaffold fill is working material too
         for (Item item : blueprint.requirements().keySet()) {
             keep.add(itemFilterSpec(item));
         }
         return keep;
+    }
+
+    /** Bottom-layer columns still hanging in the air, bounded by depth and batch size. */
+    private static List<BlockPos> foundationWork(ServerLevel level,
+                                                 ConstructionLedger.ConstructionSite site,
+                                                 Blueprint blueprint, UUID self, long now) {
+        List<BlockPos> needed = new ArrayList<>();
+        for (Blueprint.PlannedBlock plan : blueprint.placedBlocks(site.origin(), site.rotation())) {
+            if (needed.size() >= WORK_BATCH) {
+                break;
+            }
+            if (plan.pos().getY() != site.origin().getY() || plan.state().isAir()) {
+                continue; // only the bottom layer's solid cells need bearing
+            }
+            for (int depth = 1; depth <= SiteValidator.MAX_FOUNDATION_DEPTH
+                    && needed.size() < WORK_BATCH; depth++) {
+                BlockPos below = plan.pos().below(depth);
+                BlockState state = level.getBlockState(below);
+                if (state.isFaceSturdy(level, below, Direction.UP)) {
+                    break; // grounded
+                }
+                if ((state.isAir() || state.canBeReplaced()) && site.mayWork(below, self, now)) {
+                    needed.add(below.immutable());
+                }
+            }
+        }
+        return needed;
+    }
+
+    /** @return true when fill placements (or a fill-material fetch) were enqueued. */
+    private static boolean planFoundation(Villager villager, VillagerEssence essence,
+                                          ConstructionLedger ledger,
+                                          ConstructionLedger.ConstructionSite site,
+                                          List<BlockPos> foundation, long now) {
+        int carried = essence.countItems(villager, ItemFilter.parse(SCAFFOLD_FILTER));
+        if (carried == 0) {
+            if (now >= essence.getNextToolFetchTime()
+                    && !essence.getMemory().knownContainers().isEmpty()) {
+                essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
+                essence.getTaskQueue().enqueue(new TakeItemsTask(SCAFFOLD_FILTER, FETCH_CAP));
+                return true;
+            }
+            return false; // no fill material right now — walls may rise, this retries every cycle
+        }
+        List<BlockPos> batch = new ArrayList<>(foundation.subList(0, Math.min(carried, foundation.size())));
+        batch.sort(Comparator.comparingInt(BlockPos::getY)); // deepest first, like a mason would
+        ledger.claim(site, batch, villager.getUUID(), now);
+        for (BlockPos pos : batch) {
+            essence.getTaskQueue().enqueue(new PlaceBlockTask(pos, SCAFFOLD_FILTER));
+        }
+        return true;
     }
 
     /** Clearing work fills pockets with junk; drop it off before the hands are full. */

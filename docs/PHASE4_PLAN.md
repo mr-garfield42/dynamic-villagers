@@ -8,14 +8,19 @@ construction* (4.1–4.5 — walls and roofs are not separate systems, they are 
 blueprint bottom-up looks like), *foundation laying* (4.2), *farm construction* (4.4),
 *dirt scaffolding* (4.5), *path building* (4.6), *repair damaged buildings* (4.7).
 
-Status: **4.0–4.1 complete; 4.4 core + 4.5 implemented** (2026-07-10) — full gametest suite
+Status: **4.0–4.2 complete; 4.4 core + 4.5 implemented** (2026-07-10) — full gametest suite
 green with Guard Villagers + Thief loaded. The owner's first real house build (vanilla
 plains small house) succeeded end-to-end minus door/bed, which drove 4.4's multi-part work
 forward. Implemented out of milestone order because playtests hit them: 4.4 atomic door/bed
 placement + doors-last ordering (farmland/water and the vanilla-house completion gametest
 still open), 4.5 reachability-aware batching + dirt/cobble staircase scaffolding with
-teardown. Still open: 4.2 site prep/foundation, 4.3 staging + requests, rest of 4.4, 4.6
-paths, 4.7 repair, 4.8 gate, two-builder sharing gametest. Findings so far:
+teardown. 4.2 landed after: `SiteValidator` refuses overlapping sites and footprints with
+no ground within `MAX_FOUNDATION_DEPTH` (marker + `/dv build add`, `force` overrides), and
+builders pillar hanging bottom-layer columns down to sturdy ground with dirt/cobble before
+and while walls rise (clear work already fell out of the 4.1 diff). Owner decisions along
+the way: builders are **assigned-only** (no adopting open sites until Phase 5), and the
+profession-integration design is recorded in CLAUDE.md. Still open: 4.3 staging + requests,
+rest of 4.4, 4.6 paths, 4.7 repair, 4.8 gate, two-builder sharing gametest. Findings so far:
 - A builder clearing its own line of sight (mining a just-placed block to see a farther
   target) can strand material drops; the planner now **gleans matching drops inside the
   site bounds** before walking to storage. Proper attachable/interior ordering (4.4) and

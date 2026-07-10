@@ -2,6 +2,7 @@ package com.dynamicvillagers.command;
 
 import com.dynamicvillagers.construction.Blueprint;
 import com.dynamicvillagers.construction.Blueprints;
+import com.dynamicvillagers.construction.SiteValidator;
 import com.dynamicvillagers.registry.DVTags;
 import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.village.StorageLedger;
@@ -130,11 +131,13 @@ public final class DVCommands {
                                         .suggests((ctx, builder) -> SharedSuggestionProvider.suggestResource(
                                                 ctx.getSource().getServer().getStructureManager().listTemplates(), builder))
                                         .then(Commands.argument("origin", BlockPosArgument.blockPos())
-                                                .executes(ctx -> addBuildSite(ctx, Rotation.NONE))
+                                                .executes(ctx -> addBuildSite(ctx, Rotation.NONE, false))
                                                 .then(Commands.argument("rotation", StringArgumentType.word())
                                                         .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
                                                                 java.util.List.of("none", "cw90", "cw180", "ccw90"), builder))
-                                                        .executes(DVCommands::addBuildSiteRotated)))))
+                                                        .executes(ctx -> addBuildSiteRotated(ctx, false))
+                                                        .then(Commands.literal("force")
+                                                                .executes(ctx -> addBuildSiteRotated(ctx, true)))))))
                         .then(Commands.literal("list")
                                 .executes(DVCommands::listBuildSites))
                         .then(Commands.literal("cancel")
@@ -372,7 +375,7 @@ public final class DVCommands {
         return 0;
     }
 
-    private static int addBuildSiteRotated(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+    private static int addBuildSiteRotated(CommandContext<CommandSourceStack> ctx, boolean force) throws CommandSyntaxException {
         String name = StringArgumentType.getString(ctx, "rotation");
         Rotation rotation = switch (name) {
             case "none" -> Rotation.NONE;
@@ -385,10 +388,10 @@ public final class DVCommands {
             ctx.getSource().sendFailure(Component.literal("rotation must be none/cw90/cw180/ccw90"));
             return 0;
         }
-        return addBuildSite(ctx, rotation);
+        return addBuildSite(ctx, rotation, force);
     }
 
-    private static int addBuildSite(CommandContext<CommandSourceStack> ctx, Rotation rotation) throws CommandSyntaxException {
+    private static int addBuildSite(CommandContext<CommandSourceStack> ctx, Rotation rotation, boolean force) throws CommandSyntaxException {
         ServerLevel level = ctx.getSource().getLevel();
         ResourceLocation templateId = ResourceLocationArgument.getId(ctx, "template");
         BlockPos origin = BlockPosArgument.getLoadedBlockPos(ctx, "origin");
@@ -396,6 +399,15 @@ public final class DVCommands {
         if (blueprint == null) {
             ctx.getSource().sendFailure(Component.literal("no structure template '" + templateId + "'"));
             return 0;
+        }
+        if (!force) {
+            String error = SiteValidator.validate(level, ConstructionLedger.get(level),
+                    blueprint, origin, rotation);
+            if (error != null) {
+                ctx.getSource().sendFailure(Component.literal(
+                        "site refused: " + error + " (append 'force' to override)"));
+                return 0;
+            }
         }
         ConstructionLedger.ConstructionSite site = ConstructionLedger.get(level)
                 .addSite(templateId, origin, rotation, level.getGameTime());
