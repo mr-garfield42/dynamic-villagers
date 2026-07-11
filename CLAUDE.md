@@ -630,6 +630,12 @@ You may update and modify this document with any useful information you find whi
     role≠profession mismatch that only gathering, not trades, acts on). Cosmetic is NOT
     instant: it lands when the villager reaches the jobsite (a reachable jobsite block must
     exist, else the role stays skinless). 8 gametests incl. two end-to-end walk-and-claim.
+  - **Assignment outranks the mirror (fix 2026-07-11)**: a villager with an active build/path
+    assignment (Building/Path Marker or `/dv build|path assign`) keeps its BUILDER role — it
+    does NOT seek a jobsite (`SeekJobSiteBehavior` bails on `hasBuildAssignment`) and the
+    `setVillagerData` mirror does NOT overwrite its role. Without this, a marked builder near
+    a claimable jobsite (composter, ...) would claim it, gain that profession, and get
+    re-roled away from BUILDER — silently stopping the build (owner playtest regression).
 - **Builders build assigned sites only** (2026-07-10): no opportunistic adoption of open
   construction sites until the Phase 5 village manager assigns work properly.
 

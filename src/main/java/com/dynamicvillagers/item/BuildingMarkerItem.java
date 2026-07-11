@@ -86,6 +86,7 @@ public class BuildingMarkerItem extends SiteMarkerItem {
         if (essence.getRole() != VillagerRole.BUILDER) {
             essence.setRole(VillagerRole.BUILDER);
         }
+        essence.setAssignedPathId(-1); // a building assignment replaces any path assignment
         essence.setAssignedSiteId(site.id());
         player.displayClientMessage(Component.literal(
                 "Site #%d: %s at %s (%s) — %s will build it".formatted(

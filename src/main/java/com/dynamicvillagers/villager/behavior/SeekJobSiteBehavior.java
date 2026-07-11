@@ -46,7 +46,12 @@ public class SeekJobSiteBehavior extends Behavior<Villager> {
         if (villager.isBaby() || villager.tickCount % SEEK_INTERVAL_TICKS != 0) {
             return false;
         }
-        VillagerProfession target = RoleProfessions.professionFor(VillagerEssence.get(villager).getRole());
+        VillagerEssence essence = VillagerEssence.get(villager);
+        if (essence.hasBuildAssignment()) {
+            return false; // a villager told to build a specific site/path is busy — don't send
+                          // it off to claim a jobsite (and risk vanilla stealing a wrong one)
+        }
+        VillagerProfession target = RoleProfessions.professionFor(essence.getRole());
         // Only seek from NONE: a villager that already traded can never drop its profession
         // (vanilla ResetProfession requires xp==0 && level<=1), so pointing a professioned
         // villager at a new job site would claim it without ever changing the profession.

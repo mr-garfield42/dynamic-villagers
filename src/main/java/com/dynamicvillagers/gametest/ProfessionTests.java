@@ -1,6 +1,7 @@
 package com.dynamicvillagers.gametest;
 
 import com.dynamicvillagers.DynamicVillagers;
+import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.role.RoleProfessions;
 import com.dynamicvillagers.villager.role.VillagerRole;
@@ -67,6 +68,36 @@ public class ProfessionTests {
         helper.succeedWhen(() -> helper.assertTrue(
                 villager.getVillagerData().getProfession() == VillagerProfession.TOOLSMITH,
                 "the miner should become a vanilla toolsmith (toolsmith skin)"));
+    }
+
+    /**
+     * Owner playtest regression: a villager assigned to build (Building Marker) near a
+     * claimable jobsite must stay a BUILDER — it must NOT get re-roled by claiming, say, a
+     * composter, which is what silently stopped marked builders from building.
+     */
+    @GameTest(template = "empty11x11", timeoutTicks = 800, batch = "dvProfessionAssignedBuilder")
+    public static void assigned_builder_keeps_role_near_jobsite(GameTestHelper helper) {
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+        helper.setBlock(new BlockPos(3, 2, 1), Blocks.COMPOSTER); // a temptation right next door
+
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(2, 2, 1));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        ConstructionLedger.ConstructionSite site = ledger.addSite(
+                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(DynamicVillagers.MOD_ID, "starter_shelter"),
+                helper.absolutePos(new BlockPos(6, 2, 6)), net.minecraft.world.level.block.Rotation.NONE,
+                helper.getLevel().getGameTime());
+        essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedSiteId(site.id());
+
+        helper.runAfterDelay(600, () -> {
+            helper.assertTrue(essence.getRole() == VillagerRole.BUILDER,
+                    "an assigned builder must keep the builder role, not become "
+                            + essence.getRole().lowerName() + " from a nearby jobsite");
+            helper.assertTrue(essence.getAssignedSiteId() == site.id(),
+                    "its build assignment must survive");
+            helper.succeed();
+        });
     }
 
     /** Reverse: a villager that gains a mapped profession auto-gains the DV role. */

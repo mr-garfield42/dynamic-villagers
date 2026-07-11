@@ -127,6 +127,11 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
         this.assignedPathId = pathId;
     }
 
+    /** The villager has been told to build a specific site or path — it is a committed builder. */
+    public boolean hasBuildAssignment() {
+        return assignedSiteId != -1 || assignedPathId != -1;
+    }
+
     public long getNextTorchFetchTime() {
         return nextTorchFetchTime;
     }

@@ -65,9 +65,14 @@ public abstract class VillagerMixin {
         if (oldProfession == newProfession) {
             return; // level-up or type change with the profession unchanged — not our concern
         }
+        VillagerEssence essence = VillagerEssence.get(self);
+        if (essence.hasBuildAssignment()) {
+            return; // a committed builder keeps its role even if it happens to claim a jobsite;
+                    // an explicit assignment outranks the profession→role mirror
+        }
         VillagerRole mapped = RoleProfessions.roleFor(newProfession);
-        if (mapped != null && VillagerEssence.get(self).getRole() != mapped) {
-            VillagerEssence.get(self).setRole(mapped);
+        if (mapped != null && essence.getRole() != mapped) {
+            essence.setRole(mapped);
         }
     }
 
