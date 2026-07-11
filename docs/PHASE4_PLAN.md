@@ -293,8 +293,15 @@ Gaps Phase 4 must fill:
   building generates no work.
 
 ### 4.8 Phase gate
-- Perf: benchmark with builders + active sites on top of the standard 50-villager
-  scenarios; document diff-scan budget cost; no regression against Phase 3 numbers.
+- Perf (measured 2026-07-11, 50 villagers, 1000-tick window): 50 plain **1.680 ms/tick**
+  (baseline), 50 idle lumberjacks **1.921**, 50 idle builders **2.628** (the builder idle
+  path runs the request+torch chore scans, ~0.95 ms/tick over baseline for 50 — fine, far
+  under the 45 ms/tick guard). No regression vs Phase 3.
+- Build time (one villager, stocked, vanilla plains house, continuous day): **~12 min**
+  (14 348 ticks to ≥97%), down from ~25 min before the throughput pass. Trajectory: 20% at
+  197 t, 40% at 341 t, 60% at 1 646 t, 80% at 5 703 t, 97% at 14 348 t — walls/lower structure
+  are now fast; the **peaked roof (last ~20%) is ~60% of the time** because each ring needs a
+  dirt scaffold climb. Remaining optimization target: scaffold reuse / roof-ridge reach.
 - Full gametest suite green with Guard Villagers + Thief loaded.
 - Manual playtest checklist: shelter/hut/farm end-to-end from a stocked warehouse, request
   flow visible in chests, scaffold teardown leaves no mess, repair after creeper damage,
