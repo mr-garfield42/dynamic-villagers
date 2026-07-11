@@ -620,8 +620,16 @@ You may update and modify this document with any useful information you find whi
   vanilla way (role works immediately; cosmetic arrives with the POI claim — professions are
   never force-set). Reverse direction: a villager that naturally claims any mapped jobsite
   auto-gains the DV role. Unmapped professions (librarian, cleric, ...) stay pure vanilla;
-  villagers keep and level their trades (Phase 6 hook). Research vanilla POI-claim /
-  profession-reset mechanics before implementing.
+  villagers keep and level their trades (Phase 6 hook).
+  - **IMPLEMENTED 2026-07-10** (research: docs/RESEARCH_PROFESSIONS.md). `RoleProfessions`
+    (bidirectional map), `SeekJobSiteBehavior` (CORE prio 5, ahead of vanilla AcquirePoi:
+    `PoiManager#take` reserves the specific jobsite ticket + writes POTENTIAL_JOB_SITE, then
+    vanilla walks + assigns), and a `Villager#setVillagerData` HEAD mixin mirrors profession
+    back into the role. Forward seek gates on profession==NONE (a traded villager can never
+    drop its profession, so re-roling an employed villager is a no-op by design — leaves a
+    role≠profession mismatch that only gathering, not trades, acts on). Cosmetic is NOT
+    instant: it lands when the villager reaches the jobsite (a reachable jobsite block must
+    exist, else the role stays skinless). 8 gametests incl. two end-to-end walk-and-claim.
 - **Builders build assigned sites only** (2026-07-10): no opportunistic adoption of open
   construction sites until the Phase 5 village manager assigns work properly.
 
