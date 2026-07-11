@@ -48,6 +48,9 @@ public class BreakBlockOrder implements WorkOrder {
         // eyes on the block actually being hit (this runs after the task's look call, so the
         // obstruction wins over the final target while it is being cleared)
         villager.getLookControl().setLookAt(Vec3.atCenterOf(target));
+        // hold position against the block: mining a hard block takes many ticks, and without
+        // this a vanilla idle stroll would wander the villager off and reset progress forever
+        WorkHelper.holdAtSolid(villager, target);
 
         BlockState state = level.getBlockState(target);
         if (state.isAir()) {

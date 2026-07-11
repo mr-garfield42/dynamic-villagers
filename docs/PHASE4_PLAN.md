@@ -21,6 +21,20 @@ issues: fluids now sort **last** (a water source poured before its basin flows i
 cells), and `BlockMatch` ignores farmland **moisture** (water hydrates placed farmland, which
 otherwise looked like a mismatch and got re-broken, flooding the plot).
 
+Playtest fixes (2026-07-11, owner round on the house build): (1) **wander-pin** — a villager
+mining a slow block used to be dragged off by vanilla `RandomStroll` and never finish;
+`BreakBlockOrder` now holds a `WALK_TARGET` on the block being mined with close-enough 0
+(never "reached", so stroll stays suppressed while the villager presses against it). This
+also cut the vanilla-house build to **~6.4 min** (interrupted mines no longer restart).
+(2) **pickaxe-seeking** — before hand-mining a block that won't drop bare-handed, the builder
+fetches a pickaxe from a remembered chest (owner directive: look for the tool, don't spawn
+it); no chest / no pickaxe → hands, as a player would. (3) **Reverted** a line-of-sight
+"scaffold instead of mining through walls" experiment — it over-rejected reachable blocks,
+doubled suite time and stalled the house; with pickaxe-seeking, mining an obstruction is fast
+and its drop is recovered, so the mine-vs-scaffold tradeoff was resolved toward fast mining
+per the owner's stated priority. Scaffolding (for genuinely high blocks) is verified by the
+pillar test, which now asserts scaffold was placed and then fully torn down.
+
 Older status line (kept for history): 4.0–4.5 + 4.7 complete; only 4.6 (paths) + 4.8 remain —
 full gametest suite **81/81 green** with Guard Villagers + Thief. A villager builds a real
 **vanilla plains house** end-to-end from stocked storage (≥85% asserted, ~93% at 32k ticks,

@@ -68,7 +68,7 @@ public class BuilderPlanner implements RolePlanner {
     private static final int MAX_WALKABLE_CELLS = 1024; // flood-fill bound for the reachability oracle
     private static final int MAX_SCAFFOLD_HEIGHT = 8;
     private static final double EYE_HEIGHT = 1.62;
-    private static final List<String> KEEP_BASE = List.of("food");
+    private static final List<String> KEEP_BASE = List.of("food", "pickaxe"); // tools are never deposited
 
     private static final List<String> PATH_KEEP = List.of("food", "shovel", PathChore.DIRT_FILTER);
 
@@ -241,6 +241,11 @@ public class BuilderPlanner implements RolePlanner {
                 postRequests(level, villager, essence, ledger, site, blueprint, missing, now);
             }
         }
+        // owner directive: before mining a block that won't drop bare-handed, go find the
+        // right tool in a chest — only fall back to hands (last resort) when none can be had
+        if (!ready.isEmpty() && ensureBreakTool(level, villager, essence, ready, now)) {
+            return true;
+        }
         if (!ready.isEmpty()) {
             List<BlockPos> claimed = ready.stream().map(Blueprint.PlannedBlock::pos).toList();
             ledger.claim(site, claimed, self, now);
@@ -403,6 +408,44 @@ public class BuilderPlanner implements RolePlanner {
             StorageLedger.MaterialRequest request = storage.addRequest(spec, count, deliverTo, now);
             ledger.setSiteRequest(site, spec, request.id());
         }
+    }
+
+    /**
+     * If the batch will break a block that won't drop with the villager's current tool and a
+     * pickaxe is known to sit in the storage network, fetch it first (owner directive: seek
+     * the tool, don't spawn it). @return true if a tool fetch was enqueued. When no pickaxe
+     * can be found the builder proceeds — scaffolding avoids most mining, and bare hands are
+     * the last resort, exactly as a player would.
+     */
+    private static boolean ensureBreakTool(ServerLevel level, Villager villager, VillagerEssence essence,
+                                           List<Blueprint.PlannedBlock> ready, long now) {
+        if (now < essence.getNextToolFetchTime()) {
+            return false;
+        }
+        boolean needsTool = false;
+        for (Blueprint.PlannedBlock plan : ready) {
+            BlockState world = level.getBlockState(plan.pos());
+            boolean willBreak = !world.isAir() && !world.canBeReplaced()
+                    && (plan.state().isAir() || !BlockMatch.matches(world, plan.state()));
+            if (!willBreak || !world.requiresCorrectToolForDrops()
+                    || world.getDestroySpeed(level, plan.pos()) < 0) {
+                continue; // no drop rule, or unbreakable — a pickaxe wouldn't help
+            }
+            VillagerEssence.SlotRef tool = essence.findBestTool(villager, world);
+            if (tool == null || !tool.stack().isCorrectToolForDrops(world)) {
+                needsTool = true;
+                break;
+            }
+        }
+        if (!needsTool || essence.getMemory().knownContainers().isEmpty()) {
+            return false; // nothing to break by tool, or no chest to look in — hands/scaffold
+        }
+        // go look in a remembered chest (the personal-memory path, like the miner's tool
+        // fetch — the shared ledger only knows a container's contents after a villager has
+        // opened it). A wasted trip when no pickaxe turns up is the "look first" behavior.
+        essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
+        essence.getTaskQueue().enqueue(new TakeItemsTask("pickaxe", 1));
+        return true;
     }
 
     /** Withdraws every request this site posted — also used by /dv build cancel. */

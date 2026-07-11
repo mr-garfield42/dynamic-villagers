@@ -405,10 +405,16 @@ public class ConstructionTests {
         essence.setRole(VillagerRole.BUILDER);
         essence.setAssignedSiteId(site.id());
 
+        // the pillar top (y=5 relative) has no natural foothold beside it, so it can only be
+        // reached by building a dirt scaffold — track that scaffold was actually placed, then
+        // that it was fully torn down, proving the whole cycle really ran (not a lucky climb)
+        int[] maxScaffold = {0};
+        helper.onEachTick(() -> maxScaffold[0] = Math.max(maxScaffold[0], site.scaffold().size()));
         helper.succeedWhen(() -> {
             helper.assertBlockPresent(Blocks.OAK_PLANKS, new BlockPos(5, 7, 5)); // pillar top
             helper.assertTrue(site.status() == ConstructionLedger.Status.DONE,
                     "the pillar should be complete");
+            helper.assertTrue(maxScaffold[0] > 0, "the builder must have used dirt scaffolding");
             helper.assertTrue(site.scaffold().isEmpty(),
                     "every scaffold block should be torn down again");
         });
@@ -616,6 +622,50 @@ public class ConstructionTests {
 
         helper.succeedWhen(() ->
                 helper.assertBlockPresent(Blocks.OAK_PLANKS, new BlockPos(3, 2, 3)));
+    }
+
+    /**
+     * Owner directive: to break a block that won't drop bare-handed (a stone slab in the
+     * footprint) the builder fetches a pickaxe from a chest first, rather than grinding it
+     * out by hand. Verifies it ends up holding a pickaxe and clears the stone.
+     */
+    @GameTest(template = "empty11x11", timeoutTicks = 9000, batch = "dvConstructionSeekPick")
+    public static void builder_seeks_pickaxe_to_clear_stone(GameTestHelper helper) {
+        StorageLedger storage = StorageLedger.get(helper.getLevel());
+        storage.clear();
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+        perpetualDay(helper);
+
+        BlockPos chestRel = new BlockPos(9, 2, 1);
+        helper.setBlock(chestRel, Blocks.CHEST);
+        BlockPos chestAbs = helper.absolutePos(chestRel);
+        ((net.minecraft.world.Container) helper.getLevel().getBlockEntity(chestAbs))
+                .setItem(0, new ItemStack(Items.IRON_PICKAXE, 1));
+        helper.setBlock(new BlockPos(3, 2, 3), Blocks.STONE); // a floor cell blocked by stone
+
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getMemory().rememberContainer(chestAbs, 0);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.OAK_PLANKS, 64));
+        essence.getExtraInventory().setItem(1, new ItemStack(Items.OAK_LOG, 16));
+        essence.getExtraInventory().setItem(2, new ItemStack(Items.OAK_SLAB, 32));
+        essence.getExtraInventory().setItem(3, new ItemStack(Items.TORCH, 4));
+        essence.getExtraInventory().setItem(4, new ItemStack(Items.DIRT, 32));
+
+        ConstructionLedger.ConstructionSite site = ledger.addSite(SHELTER,
+                helper.absolutePos(new BlockPos(3, 2, 3)), Rotation.NONE,
+                helper.getLevel().getGameTime());
+        essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedSiteId(site.id());
+
+        helper.succeedWhen(() -> {
+            helper.assertTrue(
+                    countItem(villager.getInventory(), Items.IRON_PICKAXE)
+                            + countItem(essence.getExtraInventory(), Items.IRON_PICKAXE) == 1,
+                    "the builder should have fetched the pickaxe from the chest");
+            helper.assertBlockPresent(Blocks.OAK_PLANKS, new BlockPos(3, 2, 3)); // stone cleared, floor laid
+        });
     }
 
     /** 4.2: bad placements are refused at designation time, not discovered by a builder. */

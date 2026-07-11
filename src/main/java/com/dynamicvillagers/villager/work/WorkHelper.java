@@ -36,6 +36,18 @@ public final class WorkHelper {
     }
 
     /**
+     * Holds the villager pressed against a solid work block so a long job (mining a hard
+     * block) isn't interrupted by wandering. Vanilla RandomStroll only fires when WALK_TARGET
+     * is absent; MoveToTargetSink erases it the moment it is "reached". A walk target on the
+     * solid block itself with close-enough 0 is never reached (the villager can't stand on the
+     * block), so it stays present — suppressing stroll — while the villager stays adjacent.
+     * Only valid for a solid target; placement (an air cell) must not use this.
+     */
+    public static void holdAtSolid(Villager villager, BlockPos solid) {
+        villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(solid, WALK_SPEED, 0));
+    }
+
+    /**
      * Walks a couple of blocks perpendicular to the sight line — the polite alternative to
      * mining your own fresh wall when it blocks the view of the next target. Alternates
      * sides every second (via {@code seed}) so a dead end on one side doesn't trap the loop.
