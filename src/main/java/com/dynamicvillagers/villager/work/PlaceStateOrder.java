@@ -1,5 +1,6 @@
 package com.dynamicvillagers.villager.work;
 
+import com.dynamicvillagers.construction.BlockMatch;
 import com.dynamicvillagers.construction.BlockRequirements;
 import com.dynamicvillagers.villager.VillagerEssence;
 import net.minecraft.core.BlockPos;
@@ -8,6 +9,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
@@ -50,8 +52,8 @@ public class PlaceStateOrder implements WorkOrder {
     @Override
     public boolean tick(ServerLevel level, Villager villager) {
         BlockState current = level.getBlockState(pos);
-        if (current == target) {
-            return true; // already as planned (block states are canonical instances)
+        if (BlockMatch.matches(current, target)) {
+            return true; // already as planned (ignoring neighbor-derived shape/connections)
         }
 
         // wrong occupant: mine it away before placing. Replaceables (grass etc.) are
@@ -165,7 +167,13 @@ public class PlaceStateOrder implements WorkOrder {
         level.playSound(null, pos, target.getSoundType().getPlaceSound(), SoundSource.BLOCKS, 1.0F, 0.8F);
         if (slot != null) {
             ItemStack stack = slot.stack();
-            stack.shrink(requirement.count());
+            if (stack.getItem() instanceof BucketItem) {
+                // emptying a bucket leaves the empty bucket behind, like for a player
+                stack.shrink(1);
+                slot.container().setItem(slot.slot(), new ItemStack(Items.BUCKET));
+            } else {
+                stack.shrink(requirement.count());
+            }
             slot.container().setChanged();
         }
         return true;

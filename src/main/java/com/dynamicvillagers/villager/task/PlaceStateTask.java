@@ -18,7 +18,9 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public class PlaceStateTask implements Task {
     public static final String TYPE = "place_state";
-    private static final int GIVE_UP_TICKS = 1200;
+    // placement is instant once in reach, so this only bounds a walk that can't arrive;
+    // fail fast so the planner re-diffs and scaffolds instead of standing there for a minute
+    private static final int GIVE_UP_TICKS = 300;
 
     private final BlockState state;
     private final PlaceStateOrder order;

@@ -1,5 +1,6 @@
 package com.dynamicvillagers.villager.role;
 
+import com.dynamicvillagers.construction.BlockMatch;
 import com.dynamicvillagers.construction.BlockRequirements;
 import com.dynamicvillagers.construction.Blueprint;
 import com.dynamicvillagers.construction.Blueprints;
@@ -60,6 +61,7 @@ public class BuilderPlanner implements RolePlanner {
     private static final int FETCH_CAP = 64; // one errand's worth of one material
     private static final double PICKUP_RADIUS = 5.0;
     private static final int REACH_SCAN = 3; // horizontal radius searched for a standing spot
+    private static final int MAX_WALKABLE_CELLS = 1024; // flood-fill bound for the reachability oracle
     private static final int MAX_SCAFFOLD_HEIGHT = 8;
     private static final double EYE_HEIGHT = 1.62;
     private static final List<String> KEEP_BASE = List.of("food");
@@ -79,6 +81,18 @@ public class BuilderPlanner implements RolePlanner {
                     || TorchChore.plan(level, villager, essence);
         }
 
+        // 4.7 repair: a builder keeps watching the site it finished. A budgeted integrity
+        // scan flips a damaged building back to OPEN so the normal diff rebuilds it — repair
+        // is the same machinery as construction, not a separate system. An intact building
+        // is idle-watched (no chores; the assignment is a standing post until reassigned).
+        if (site.status() == ConstructionLedger.Status.DONE) {
+            if (hasDamage(level, site, blueprint)) {
+                ledger.setStatus(site, ConstructionLedger.Status.OPEN);
+            } else {
+                return false;
+            }
+        }
+
         long now = level.getGameTime();
         UUID self = villager.getUUID();
 
@@ -89,6 +103,7 @@ public class BuilderPlanner implements RolePlanner {
             return true;
         }
 
+        Set<BlockPos> walkable = walkableRegion(level, villager);
         List<Blueprint.PlannedBlock> batch = new ArrayList<>();
         boolean scannedAll = true;
         boolean skipped = false;
@@ -123,7 +138,7 @@ public class BuilderPlanner implements RolePlanner {
                 skipped = true; // another builder's claim
                 continue;
             }
-            if (!isReachable(level, villager, plan.pos())) {
+            if (!isReachable(level, villager, plan.pos(), walkable)) {
                 skipped = true; // no standing spot in reach — burn no give-up timers on it
                 if (firstUnreachable == null) {
                     firstUnreachable = plan.pos();
@@ -141,9 +156,8 @@ public class BuilderPlanner implements RolePlanner {
                 }
                 ledger.setStatus(site, ConstructionLedger.Status.DONE);
                 cancelSiteRequests(level, ledger, site); // the board owes this site nothing now
-                if (essence.getAssignedSiteId() == site.id()) {
-                    essence.setAssignedSiteId(-1);
-                }
+                // the builder stays assigned and watches for damage (4.7); reassign it with
+                // the marker or /dv build assign to move it to a new site
                 return false;
             }
             if (scannedAll && firstUnreachable != null) {
@@ -236,9 +250,9 @@ public class BuilderPlanner implements RolePlanner {
     }
 
     /**
-     * The assigned site when it is real and open — and nothing else. Owner decision
-     * (2026-07-10): builders never adopt open sites on their own; auto-assignment is the
-     * Phase 5 village manager's job.
+     * The assigned site, OPEN or DONE (a finished site is still watched for repair). Owner
+     * decision (2026-07-10): builders never adopt open sites on their own; auto-assignment is
+     * the Phase 5 village manager's job. Only a cancelled (removed) site clears the order.
      */
     @Nullable
     private static ConstructionLedger.ConstructionSite activeSite(VillagerEssence essence,
@@ -248,11 +262,29 @@ public class BuilderPlanner implements RolePlanner {
             return null;
         }
         ConstructionLedger.ConstructionSite assigned = ledger.getSite(assignedId);
-        if (assigned != null && assigned.status() == ConstructionLedger.Status.OPEN) {
+        if (assigned != null) {
             return assigned;
         }
-        essence.setAssignedSiteId(-1); // cancelled or finished — the order is spent
+        essence.setAssignedSiteId(-1); // the site was cancelled — the order is spent
         return null;
+    }
+
+    /** True on the first blueprint block the world no longer matches — the repair trigger. */
+    private static boolean hasDamage(ServerLevel level, ConstructionLedger.ConstructionSite site,
+                                     Blueprint blueprint) {
+        for (Blueprint.PlannedBlock plan : blueprint.placedBlocks(site.origin(), site.rotation())) {
+            if (BlockMatch.matches(level.getBlockState(plan.pos()), plan.state())) {
+                continue;
+            }
+            if (!plan.state().isAir() && BlockRequirements.isDependentPart(plan.state())) {
+                continue; // its primary half covers it
+            }
+            if (!plan.state().isAir() && !BlockRequirements.isBuildable(plan.state())) {
+                continue; // nothing a villager could ever place — not "damage"
+            }
+            return true;
+        }
+        return false;
     }
 
     /** Food plus every material of the active site — deposits must not dump the walls. */
@@ -449,15 +481,24 @@ public class BuilderPlanner implements RolePlanner {
     }
 
     private static boolean matches(BlockState world, BlockState planned) {
-        return world == planned || (world.isAir() && planned.isAir());
+        return BlockMatch.matches(world, planned);
     }
 
     private static String itemFilterSpec(Item item) {
         return "item:" + BuiltInRegistries.ITEM.getKey(item);
     }
 
-    /** Some standing position (solid footing, body space, within arm's reach) exists. */
-    private static boolean isReachable(ServerLevel level, Villager villager, BlockPos target) {
+    /**
+     * A standing position exists from which the builder can reach the target AND that spot
+     * is walkable-connected to where the builder stands now (in {@code walkable}). The
+     * connectivity half matters: a foothold atop a wall the villager can't climb is within
+     * arm's reach geometrically but stranded — accepting it made the placement task walk at
+     * an unreachable spot and burn its give-up timer. Excluding it instead lets the planner
+     * build a scaffold staircase, after which the recomputed {@code walkable} set includes
+     * the scaffold steps and the roof foothold becomes reachable.
+     */
+    private static boolean isReachable(ServerLevel level, Villager villager, BlockPos target,
+                                       Set<BlockPos> walkable) {
         double reachSq = WorkHelper.REACH * WorkHelper.REACH;
         if (villager.getEyePosition().distanceToSqr(Vec3.atCenterOf(target)) <= reachSq) {
             return true;
@@ -466,7 +507,7 @@ public class BuilderPlanner implements RolePlanner {
             for (int dx = -REACH_SCAN; dx <= REACH_SCAN; dx++) {
                 for (int dz = -REACH_SCAN; dz <= REACH_SCAN; dz++) {
                     BlockPos feet = target.offset(dx, dy, dz);
-                    if (feet.equals(target) || !isStandable(level, feet)) {
+                    if (feet.equals(target) || !walkable.contains(feet)) {
                         continue;
                     }
                     double ex = feet.getX() + 0.5 - (target.getX() + 0.5);
@@ -479,6 +520,48 @@ public class BuilderPlanner implements RolePlanner {
             }
         }
         return false;
+    }
+
+    /**
+     * The set of standable cells the builder can walk to from where it stands, by a bounded
+     * flood fill stepping one block up or down (villager step height). This is our own cheap,
+     * deterministic reachability oracle — one fill per plan cycle, reused for every block —
+     * rather than per-block engine pathfinding (which proved unreliable mid-plan).
+     */
+    private static Set<BlockPos> walkableRegion(ServerLevel level, Villager villager) {
+        Set<BlockPos> seen = new HashSet<>();
+        java.util.Deque<BlockPos> frontier = new java.util.ArrayDeque<>();
+        // Seed from every standable cell around the villager, not one guessed spot: wherever
+        // it actually stands (floor, scaffold step, rooftop) is a real foothold, and the
+        // single-cell guess failed when its block resolved into solid or a partial block.
+        BlockPos base = villager.blockPosition();
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dy = -3; dy <= 1; dy++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    BlockPos cell = base.offset(dx, dy, dz);
+                    if (isStandable(level, cell) && seen.add(cell)) {
+                        frontier.add(cell);
+                    }
+                }
+            }
+        }
+        while (!frontier.isEmpty() && seen.size() < MAX_WALKABLE_CELLS) {
+            BlockPos cur = frontier.poll();
+            for (Direction dir : Direction.Plane.HORIZONTAL) {
+                for (int dy = 1; dy >= -1; dy--) { // step up 1, level, or down 1
+                    BlockPos next = cur.relative(dir).atY(cur.getY() + dy);
+                    if (seen.contains(next) || !isStandable(level, next)) {
+                        continue;
+                    }
+                    if (dy == 1 && !level.getBlockState(cur.above(2)).getCollisionShape(level, cur.above(2)).isEmpty()) {
+                        continue; // no headroom to step up here
+                    }
+                    seen.add(next);
+                    frontier.add(next);
+                }
+            }
+        }
+        return seen;
     }
 
     private static boolean isStandable(ServerLevel level, BlockPos feet) {

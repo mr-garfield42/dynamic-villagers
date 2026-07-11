@@ -11,7 +11,7 @@ import net.minecraft.world.entity.npc.Villager;
 
 public class PlaceBlockTask implements Task {
     public static final String TYPE = "place_block";
-    private static final int GIVE_UP_TICKS = 1200; // an unreachable target must not stall the queue
+    private static final int GIVE_UP_TICKS = 300; // fail fast on an unreachable spot; the planner re-plans
 
     private final PlaceBlockOrder order;
     private final String filter;

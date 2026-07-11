@@ -141,11 +141,28 @@ def fixture_pillar():
     return structure((1, 6, 1), palette, blocks)
 
 
+def fixture_farm():
+    """Gametest fixture for farm specials: a 3x1x3 plot — a water source at the centre
+    (placed from a bucket, empty bucket kept) ringed by 8 farmland (placed from dirt)."""
+    FARMLAND, WATER = 0, 1
+    palette = [
+        ("minecraft:farmland", {"moisture": "0"}),
+        ("minecraft:water", {"level": "0"}),
+    ]
+    blocks = []
+    for z in range(3):
+        for x in range(3):
+            state = WATER if (x, z) == (1, 1) else FARMLAND
+            blocks.append(((x, 0, z), state))
+    return structure((3, 1, 3), palette, blocks)
+
+
 TEMPLATES = {
     "starter_shelter": starter_shelter,
     "empty11x11": empty11x11,
     "fixture_hut": fixture_hut,
     "fixture_pillar": fixture_pillar,
+    "fixture_farm": fixture_farm,
 }
 
 if __name__ == "__main__":

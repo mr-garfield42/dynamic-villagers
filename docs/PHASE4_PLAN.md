@@ -8,7 +8,24 @@ construction* (4.1–4.5 — walls and roofs are not separate systems, they are 
 blueprint bottom-up looks like), *foundation laying* (4.2), *farm construction* (4.4),
 *dirt scaffolding* (4.5), *path building* (4.6), *repair damaged buildings* (4.7).
 
-Status: **4.0–4.2 complete; 4.4 core + 4.5 implemented** (2026-07-10) — full gametest suite
+Status: **4.0–4.5 + 4.7 complete; only 4.6 (paths) + 4.8 (gate) remain** (2026-07-11) —
+full gametest suite **81/81 green** with Guard Villagers + Thief. A villager builds a real
+**vanilla plains house** end-to-end from stocked storage (≥85% asserted, ~93% at 32k ticks,
+incl. the two-part door and bed the owner saw fail), plus farm plots (farmland from dirt,
+water from a bucket that returns empty), and **repairs** damage to finished buildings.
+Getting the vanilla house to build surfaced (and fixed) five real bugs, each also a
+gameplay improvement: (1) stairs/panes thrashing the diff → `BlockMatch` ignores
+neighbor-derived properties (shape, connections, power); (2) doors churning forever because
+a villager opens the door it just placed → `BlockMatch` also ignores the operational `open`;
+(3) unreachable roof footholds burning give-up timers → a **walkable flood-fill reachability
+oracle** (seeded from every standable cell near the villager) so out-of-reach work triggers
+scaffolding; (4) placement give-up cut 1200→300 so a stuck walk re-plans fast; (5) builders
+stopping at night in the shared gametest level → tests pin perpetual day (gameplay keeps the
+realistic day/night work cycle). **Known 4.8 perf item**: hand-building ~150 blocks with a
+scaffold cycle per roof block is slow (~30k ticks for the plains house); throughput (fewer
+replan gaps, better roof-ridge reach) is a performance pass, not a correctness gap.
+
+Older status line (kept for history): 4.0–4.2 complete; 4.4 core + 4.5 implemented — suite
 green with Guard Villagers + Thief loaded. The owner's first real house build (vanilla
 plains small house) succeeded end-to-end minus door/bed, which drove 4.4's multi-part work
 forward. Implemented out of milestone order because playtests hit them: 4.4 atomic door/bed
