@@ -43,6 +43,7 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
     @Nullable
     private QuarrySite quarrySite;
     private int assignedSiteId = -1; // construction site this villager was told to work; -1 = none
+    private int assignedPathId = -1; // path this villager was told to build; -1 = none
     private final SimpleContainer extraInventory = new SimpleContainer(EXTRA_SLOTS);
     private final VillagerMemory memory = new VillagerMemory();
     private final TaskQueue taskQueue = new TaskQueue();
@@ -116,6 +117,14 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
 
     public void setAssignedSiteId(int siteId) {
         this.assignedSiteId = siteId;
+    }
+
+    public int getAssignedPathId() {
+        return assignedPathId;
+    }
+
+    public void setAssignedPathId(int pathId) {
+        this.assignedPathId = pathId;
     }
 
     public long getNextTorchFetchTime() {
@@ -233,6 +242,7 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
             tag.put("quarry_site", site);
         }
         tag.putInt("assigned_site", assignedSiteId);
+        tag.putInt("assigned_path", assignedPathId);
         tag.put("extra_inventory", extraInventory.createTag(provider));
         tag.put("memory_containers", memory.save());
         tag.put("memory_spots", memory.saveSpots());
@@ -259,6 +269,7 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
             quarrySite = new QuarrySite(BlockPos.of(site.getLong("a")), BlockPos.of(site.getLong("b")));
         }
         assignedSiteId = tag.contains("assigned_site") ? tag.getInt("assigned_site") : -1;
+        assignedPathId = tag.contains("assigned_path") ? tag.getInt("assigned_path") : -1;
         extraInventory.fromTag(tag.getList("extra_inventory", Tag.TAG_COMPOUND), provider);
         memory.load(tag.getList("memory_containers", Tag.TAG_COMPOUND));
         memory.loadSpots(tag.getCompound("memory_spots"));

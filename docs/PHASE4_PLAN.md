@@ -8,7 +8,20 @@ construction* (4.1–4.5 — walls and roofs are not separate systems, they are 
 blueprint bottom-up looks like), *foundation laying* (4.2), *farm construction* (4.4),
 *dirt scaffolding* (4.5), *path building* (4.6), *repair damaged buildings* (4.7).
 
-Status: **4.0–4.5 + 4.7 complete; only 4.6 (paths) + 4.8 (gate) remain** (2026-07-11) —
+Status: **4.0–4.7 complete; only 4.8 (gate) remains** (2026-07-11) — 84/84 gametests green.
+**4.6 path building** landed: a `PathSite` polyline on the construction ledger, a **Path
+Marker** (bind villager, click ground waypoints, sneak-click to finish) and `/dv path
+add|list|cancel`; the builder terrain-follows the line, clears head-room, fills 1-deep gaps
+with dirt, and flattens dirt-family ground to a dirt path with a shovel (`ShovelPathTask`).
+**Builder throughput** improved for the slow-house complaint: `WORK_BATCH` 12→40 (far fewer
+idle replan gaps), `REPLAN_DELAY` 60→20 (less wandering between batches; only affects active
+workers, so idle-crowd scan cost is unchanged), and work-walk speed 0.6→0.7. The bigger
+batch surfaced two more environmental-property bugs, both fixed and both real gameplay
+issues: fluids now sort **last** (a water source poured before its basin flows into unfilled
+cells), and `BlockMatch` ignores farmland **moisture** (water hydrates placed farmland, which
+otherwise looked like a mismatch and got re-broken, flooding the plot).
+
+Older status line (kept for history): 4.0–4.5 + 4.7 complete; only 4.6 (paths) + 4.8 remain —
 full gametest suite **81/81 green** with Guard Villagers + Thief. A villager builds a real
 **vanilla plains house** end-to-end from stocked storage (≥85% asserted, ~93% at 32k ticks,
 incl. the two-part door and bed the owner saw fail), plus farm plots (farmland from dirt,

@@ -124,11 +124,47 @@ public class ConstructionLedger extends SavedData {
         }
     }
 
+    /**
+     * A designated path: an ordered polyline of surface waypoints the builder flattens into
+     * a walkable dirt path, following the terrain between them (milestone 4.6). Unlike a
+     * building it has no blueprint — the work is derived from the line and the ground.
+     */
+    public static final class PathSite {
+        private final int id;
+        private final List<BlockPos> waypoints;
+        private final long created;
+        private Status status = Status.OPEN;
+
+        private PathSite(int id, List<BlockPos> waypoints, long created) {
+            this.id = id;
+            this.waypoints = List.copyOf(waypoints);
+            this.created = created;
+        }
+
+        public int id() {
+            return id;
+        }
+
+        public List<BlockPos> waypoints() {
+            return waypoints;
+        }
+
+        public long created() {
+            return created;
+        }
+
+        public Status status() {
+            return status;
+        }
+    }
+
     private static final SavedData.Factory<ConstructionLedger> FACTORY =
             new SavedData.Factory<>(ConstructionLedger::new, ConstructionLedger::load, null);
 
     private final List<ConstructionSite> sites = new ArrayList<>();
+    private final List<PathSite> paths = new ArrayList<>();
     private int nextSiteId = 1;
+    private int nextPathId = 1;
 
     public static ConstructionLedger get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
@@ -163,6 +199,46 @@ public class ConstructionLedger extends SavedData {
 
     public List<ConstructionSite> allSites() {
         return Collections.unmodifiableList(sites);
+    }
+
+    public PathSite addPath(List<BlockPos> waypoints, long now) {
+        List<BlockPos> immutable = new ArrayList<>();
+        for (BlockPos pos : waypoints) {
+            immutable.add(pos.immutable());
+        }
+        PathSite path = new PathSite(nextPathId++, immutable, now);
+        paths.add(path);
+        setDirty();
+        return path;
+    }
+
+    @Nullable
+    public PathSite getPath(int id) {
+        for (PathSite path : paths) {
+            if (path.id == id) {
+                return path;
+            }
+        }
+        return null;
+    }
+
+    public boolean cancelPath(int id) {
+        boolean removed = paths.removeIf(path -> path.id == id);
+        if (removed) {
+            setDirty();
+        }
+        return removed;
+    }
+
+    public List<PathSite> allPaths() {
+        return Collections.unmodifiableList(paths);
+    }
+
+    public void setPathStatus(PathSite path, Status status) {
+        if (path.status != status) {
+            path.status = status;
+            setDirty();
+        }
     }
 
     /** Sites of the given status whose origin lies in range of the anchor, oldest first. */
@@ -239,6 +315,7 @@ public class ConstructionLedger extends SavedData {
     /** Wipes everything — gametest isolation (the ledger outlives test arenas). */
     public void clear() {
         sites.clear();
+        paths.clear();
         setDirty();
     }
 
@@ -282,6 +359,22 @@ public class ConstructionLedger extends SavedData {
         }
         tag.put("sites", list);
         tag.putInt("next_site_id", nextSiteId);
+
+        ListTag pathList = new ListTag();
+        for (PathSite path : paths) {
+            CompoundTag pathTag = new CompoundTag();
+            pathTag.putInt("id", path.id);
+            pathTag.putLong("created", path.created);
+            pathTag.putString("status", path.status.name());
+            long[] pts = new long[path.waypoints.size()];
+            for (int i = 0; i < pts.length; i++) {
+                pts[i] = path.waypoints.get(i).asLong();
+            }
+            pathTag.putLongArray("waypoints", pts);
+            pathList.add(pathTag);
+        }
+        tag.put("paths", pathList);
+        tag.putInt("next_path_id", nextPathId);
         return tag;
     }
 
@@ -327,6 +420,21 @@ public class ConstructionLedger extends SavedData {
             ledger.sites.add(site);
         }
         ledger.nextSiteId = Math.max(1, tag.getInt("next_site_id"));
+
+        for (Tag entry : tag.getList("paths", Tag.TAG_COMPOUND)) {
+            if (!(entry instanceof CompoundTag pathTag)) {
+                continue;
+            }
+            List<BlockPos> waypoints = new ArrayList<>();
+            for (long packed : pathTag.getLongArray("waypoints")) {
+                waypoints.add(BlockPos.of(packed));
+            }
+            PathSite path = new PathSite(pathTag.getInt("id"), waypoints, pathTag.getLong("created"));
+            Status status = Status.byName(pathTag.getString("status"));
+            path.status = status != null ? status : Status.OPEN;
+            ledger.paths.add(path);
+        }
+        ledger.nextPathId = Math.max(1, tag.getInt("next_path_id"));
         return ledger;
     }
 }

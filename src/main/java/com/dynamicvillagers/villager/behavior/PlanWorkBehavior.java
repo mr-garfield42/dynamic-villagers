@@ -17,7 +17,11 @@ import net.minecraft.world.entity.schedule.Activity;
  * stay cheap. Runs in CORE like ExecuteTaskBehavior, so brain-gating mods pause it too.
  */
 public class PlanWorkBehavior extends Behavior<Villager> {
-    private static final int REPLAN_DELAY = 60;
+    // Only applied after a plan that PRODUCED work — a short gap here keeps an active worker
+    // from idling and wandering off between batches (the builder's main time sink). Idle
+    // villagers with nothing to do back off on FAILED_PLAN_DELAY instead, so scan cost for a
+    // crowd of idle gatherers is unaffected.
+    private static final int REPLAN_DELAY = 20;
     private static final int FAILED_PLAN_DELAY = 400;
 
     public PlanWorkBehavior() {

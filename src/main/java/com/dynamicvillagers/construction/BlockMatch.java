@@ -10,8 +10,9 @@ import java.util.Set;
  * Compares a world block against a blueprint's captured state, ignoring properties the
  * builder can't hold fixed: those Minecraft derives from neighbors — stair {@code shape},
  * the six connection booleans (panes, fences, walls, redstone, vines), redstone power — and
- * operational state like a door's {@code open} (a villager opens a door by walking through
- * it). The builder places the captured state and these settle to whatever the world dictates;
+ * operational or environmental state like a door's {@code open} (opened by a passing
+ * villager) or farmland {@code moisture} (hydrated by nearby water). The builder places the
+ * captured state and these settle to whatever the world dictates;
  * comparing them would make the diff (and the placement order) re-work a settled block forever.
  */
 public final class BlockMatch {
@@ -28,7 +29,10 @@ public final class BlockMatch {
             BlockStateProperties.POWER,
             // operational, not structural: a villager walking through opens the door it just
             // placed, and OPEN≠closed would make the diff break-and-replace it forever
-            BlockStateProperties.OPEN);
+            BlockStateProperties.OPEN,
+            // environmental: farmland hydrates (moisture 0→7) from nearby water, so the
+            // placed block drifts from the blueprint's value with no builder action
+            BlockStateProperties.MOISTURE);
 
     public static boolean matches(BlockState world, BlockState planned) {
         if (world == planned) {

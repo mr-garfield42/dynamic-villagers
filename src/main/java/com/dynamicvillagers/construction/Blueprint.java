@@ -105,13 +105,23 @@ public final class Blueprint {
                     new BlockPos(posTag.getInt(0), posTag.getInt(1), posTag.getInt(2)), state));
         }
         blocks.sort(Comparator
-                // doors last (decision 6): the doorway stays an open gap while walls and
-                // interior go up, and the door never pops from adjacent wall placements
-                .comparingInt((PlannedBlock block) -> block.state().getBlock() instanceof DoorBlock ? 1 : 0)
+                // doors and fluids last (decision 6): the doorway stays an open gap while
+                // walls and interior go up so the door never pops from adjacent placements,
+                // and a water/lava source poured before its basin is finished would flow into
+                // the cells still waiting to be filled
+                .comparingInt((PlannedBlock block) -> finishingOrder(block.state()))
                 .thenComparingInt(block -> block.pos().getY())
                 .thenComparingInt(block -> block.pos().getZ())
                 .thenComparingInt(block -> block.pos().getX()));
         return new Blueprint(id, size, blocks);
+    }
+
+    /** 0 = normal structure, 1 = door (placed last), 2 = fluid (poured into a finished basin). */
+    private static int finishingOrder(BlockState state) {
+        if (!state.getFluidState().isEmpty()) {
+            return 2;
+        }
+        return state.getBlock() instanceof DoorBlock ? 1 : 0;
     }
 
     private static BlockState resolveJigsaw(ResourceLocation id, CompoundTag nbt,

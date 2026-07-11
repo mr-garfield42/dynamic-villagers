@@ -28,6 +28,8 @@ public final class DVItems {
             ITEMS.register("storage_marker", () -> new StorageMarkerItem(new Item.Properties().stacksTo(1)));
     public static final DeferredItem<Item> BUILDING_MARKER =
             ITEMS.register("building_marker", () -> new BuildingMarkerItem(new Item.Properties().stacksTo(1)));
+    public static final DeferredItem<Item> PATH_MARKER =
+            ITEMS.register("path_marker", () -> new PathMarkerItem(new Item.Properties().stacksTo(1)));
 
     public static void addCreative(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
@@ -36,6 +38,7 @@ public final class DVItems {
             event.accept(QUARRY_MARKER);
             event.accept(STORAGE_MARKER);
             event.accept(BUILDING_MARKER);
+            event.accept(PATH_MARKER);
         }
     }
 

@@ -15,7 +15,10 @@ import org.jetbrains.annotations.Nullable;
 public final class WorkHelper {
     public static final double REACH = 4.0; // from the eyes, slightly under player reach
 
-    public static final float WALK_SPEED = 0.6F;
+    // Workers move to their tasks with purpose (a touch above vanilla panic speed). Walking
+    // into reach is the dominant cost of every block operation, so this compounds across a
+    // whole build; kept below a sprint so it still reads as a villager, not a blur.
+    public static final float WALK_SPEED = 0.7F;
 
     /** Looks at the target and walks toward it when out of reach. @return true when in reach. */
     public static boolean moveIntoReachAndLook(Villager villager, BlockPos pos) {

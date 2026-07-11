@@ -53,7 +53,11 @@ import java.util.function.Predicate;
  * another builder has claimed are skipped and picked up by a later pass.
  */
 public class BuilderPlanner implements RolePlanner {
-    public static final int WORK_BATCH = 12;
+    // A large batch is the main throughput lever: each plan cycle ends in a replan gap the
+    // villager spends idling/wandering, so more work queued per cycle means far fewer gaps
+    // and much less walking back to the site. Sorted bottom-up, a big batch is placed from a
+    // few standing spots with little movement between blocks.
+    public static final int WORK_BATCH = 40;
     public static final String SCAFFOLD_FILTER = "scaffold"; // dirt or cobblestone
     private static final String CHEST_FILTER = "item:minecraft:chest";
     private static final int MIN_FREE_SLOTS = 4;
@@ -66,9 +70,20 @@ public class BuilderPlanner implements RolePlanner {
     private static final double EYE_HEIGHT = 1.62;
     private static final List<String> KEEP_BASE = List.of("food");
 
+    private static final List<String> PATH_KEEP = List.of("food", "shovel", PathChore.DIRT_FILTER);
+
     @Override
     public boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
         ConstructionLedger ledger = ConstructionLedger.get(level);
+
+        // a builder is assigned either a path or a building; paths take the branch first
+        if (essence.getAssignedPathId() != -1) {
+            if (planDepositWhenStuffed(level, villager, essence, PATH_KEEP)) {
+                return true;
+            }
+            return PathChore.plan(level, villager, essence, ledger);
+        }
+
         ConstructionLedger.ConstructionSite site = activeSite(essence, ledger);
         Blueprint blueprint = site != null ? Blueprints.load(level, site.templateId()) : null;
 

@@ -154,6 +154,17 @@ public final class DVCommands {
                                 .then(Commands.argument("id", IntegerArgumentType.integer(1))
                                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                                 .executes(DVCommands::setBuildStaging)))))
+                .then(Commands.literal("path")
+                        .then(Commands.literal("add")
+                                .then(Commands.argument("target", EntityArgument.entity())
+                                        .then(Commands.argument("from", BlockPosArgument.blockPos())
+                                                .then(Commands.argument("to", BlockPosArgument.blockPos())
+                                                        .executes(DVCommands::addPath)))))
+                        .then(Commands.literal("list")
+                                .executes(DVCommands::listPaths))
+                        .then(Commands.literal("cancel")
+                                .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                                        .executes(DVCommands::cancelPath))))
                 .then(Commands.literal("tasks")
                         .then(Commands.argument("target", EntityArgument.entity())
                                 .executes(DVCommands::listTasks)))
@@ -180,7 +191,8 @@ public final class DVCommands {
                         essence.getMemory().knownSpots("tree").size(),
                         essence.getMineSite() != null ? " | mine site" : "",
                         essence.getQuarrySite() != null ? " | quarry" : "",
-                        essence.getAssignedSiteId() != -1 ? " | build site #" + essence.getAssignedSiteId() : "")), false);
+                        essence.getAssignedSiteId() != -1 ? " | build site #" + essence.getAssignedSiteId()
+                                : essence.getAssignedPathId() != -1 ? " | path #" + essence.getAssignedPathId() : "")), false);
         sendInventory(ctx, "vanilla", villager.getInventory());
         sendInventory(ctx, "extra", essence.getExtraInventory());
         return 1;
@@ -537,6 +549,50 @@ public final class DVCommands {
                         villager.getName().getString(), id, site.templateId(),
                         site.origin().toShortString())), false);
         return 1;
+    }
+
+    /** Debug: post a straight two-point path and set the villager to build it. */
+    private static int addPath(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        ServerLevel level = ctx.getSource().getLevel();
+        BlockPos from = BlockPosArgument.getLoadedBlockPos(ctx, "from");
+        BlockPos to = BlockPosArgument.getLoadedBlockPos(ctx, "to");
+        ConstructionLedger.PathSite path = ConstructionLedger.get(level)
+                .addPath(java.util.List.of(from, to), level.getGameTime());
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedSiteId(-1);
+        essence.setAssignedPathId(path.id());
+        ctx.getSource().sendSuccess(() -> Component.literal(
+                "path #%d: %s → %s — %s will build it".formatted(
+                        path.id(), from.toShortString(), to.toShortString(),
+                        villager.getName().getString())), false);
+        return path.id();
+    }
+
+    private static int listPaths(CommandContext<CommandSourceStack> ctx) {
+        var paths = ConstructionLedger.get(ctx.getSource().getLevel()).allPaths();
+        if (paths.isEmpty()) {
+            ctx.getSource().sendSuccess(() -> Component.literal("no paths"), false);
+            return 0;
+        }
+        for (ConstructionLedger.PathSite path : paths) {
+            String line = "#%d: %d waypoints — %s".formatted(
+                    path.id(), path.waypoints().size(),
+                    path.status().name().toLowerCase(java.util.Locale.ROOT));
+            ctx.getSource().sendSuccess(() -> Component.literal(line), false);
+        }
+        return paths.size();
+    }
+
+    private static int cancelPath(CommandContext<CommandSourceStack> ctx) {
+        int id = IntegerArgumentType.getInteger(ctx, "id");
+        if (ConstructionLedger.get(ctx.getSource().getLevel()).cancelPath(id)) {
+            ctx.getSource().sendSuccess(() -> Component.literal("path #" + id + " cancelled"), false);
+            return 1;
+        }
+        ctx.getSource().sendFailure(Component.literal("no path #" + id));
+        return 0;
     }
 
     private static Villager requireVillager(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

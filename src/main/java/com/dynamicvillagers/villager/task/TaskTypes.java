@@ -23,6 +23,7 @@ public final class TaskTypes {
         register(TillSoilTask.TYPE, TillSoilTask::load);
         register(DeliverItemsTask.TYPE, DeliverItemsTask::load);
         register(PlaceStateTask.TYPE, PlaceStateTask::load);
+        register(ShovelPathTask.TYPE, ShovelPathTask::load);
     }
 
     public static void register(String typeId, BiFunction<CompoundTag, HolderLookup.Provider, Task> loader) {
