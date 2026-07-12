@@ -13,6 +13,7 @@ public final class RolePlanners {
         PLANNERS.put(VillagerRole.FARMER, new FarmerPlanner());
         PLANNERS.put(VillagerRole.MINER, new MinerPlanner());
         PLANNERS.put(VillagerRole.BUILDER, new BuilderPlanner());
+        PLANNERS.put(VillagerRole.HUNTER, new HunterPlanner());
     }
 
     @Nullable

@@ -24,6 +24,9 @@ public final class TaskTypes {
         register(DeliverItemsTask.TYPE, DeliverItemsTask::load);
         register(PlaceStateTask.TYPE, PlaceStateTask::load);
         register(ShovelPathTask.TYPE, ShovelPathTask::load);
+        register(KillAnimalTask.TYPE, KillAnimalTask::load);
+        register(CookAtCampfireTask.TYPE, CookAtCampfireTask::load);
+        register(CraftTask.TYPE, CraftTask::load);
     }
 
     public static void register(String typeId, BiFunction<CompoundTag, HolderLookup.Provider, Task> loader) {

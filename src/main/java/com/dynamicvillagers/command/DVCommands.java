@@ -9,6 +9,7 @@ import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.role.VillagerRole;
 import com.dynamicvillagers.villager.task.BreakBlockTask;
+import com.dynamicvillagers.villager.task.CraftTask;
 import com.dynamicvillagers.villager.task.DepositToContainerTask;
 import com.dynamicvillagers.villager.task.GoToTask;
 import com.dynamicvillagers.villager.task.PickUpItemsTask;
@@ -27,6 +28,7 @@ import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -98,6 +100,13 @@ public final class DVCommands {
                                                 .executes(ctx -> enqueue(ctx, new TakeItemsTask(
                                                         StringArgumentType.getString(ctx, "filter"),
                                                         IntegerArgumentType.getInteger(ctx, "count"))))))))
+                .then(Commands.literal("craft")
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .then(Commands.argument("item", ResourceLocationArgument.id())
+                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggestResource(
+                                                BuiltInRegistries.ITEM.keySet(), builder))
+                                        .then(Commands.argument("count", IntegerArgumentType.integer(1))
+                                                .executes(DVCommands::craftItem)))))
                 .then(Commands.literal("storage")
                         .then(Commands.literal("list")
                                 .executes(DVCommands::listStorage))
@@ -227,6 +236,22 @@ public final class DVCommands {
         }
         String line = label + " (" + container.getContainerSize() + " slots):" + (items.isEmpty() ? " empty" : items);
         ctx.getSource().sendSuccess(() -> Component.literal(line), false);
+    }
+
+    private static int craftItem(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        Villager villager = requireVillager(ctx);
+        ResourceLocation id = ResourceLocationArgument.getId(ctx, "item");
+        if (!BuiltInRegistries.ITEM.containsKey(id)) {
+            ctx.getSource().sendFailure(Component.literal("no such item '" + id + "'"));
+            return 0;
+        }
+        Item item = BuiltInRegistries.ITEM.get(id);
+        int count = IntegerArgumentType.getInteger(ctx, "count");
+        // debug entry point: allow a table (the villager finds one nearby for 3×3 recipes)
+        VillagerEssence.get(villager).getTaskQueue().enqueue(new CraftTask(item, count, true));
+        ctx.getSource().sendSuccess(() -> Component.literal(
+                "queued craft %dx %s".formatted(count, id)), false);
+        return 1;
     }
 
     private static int setRole(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

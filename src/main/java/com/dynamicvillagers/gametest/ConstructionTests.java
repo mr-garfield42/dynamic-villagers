@@ -683,6 +683,101 @@ public class ConstructionTests {
     }
 
     /**
+     * Owner request: builders make their own materials. The storage network holds only logs
+     * (and the finished slabs/torches), no planks — so the builder must craft the ~47 planks
+     * the shelter needs from logs before it can lay a single wall.
+     */
+    @GameTest(template = "empty11x11", timeoutTicks = 12000, batch = "dvConstructionCraft")
+    public static void builder_crafts_its_own_planks_from_logs(GameTestHelper helper) {
+        StorageLedger storage = StorageLedger.get(helper.getLevel());
+        storage.clear();
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+        perpetualDay(helper);
+
+        BlockPos chestRel = new BlockPos(9, 2, 1);
+        helper.setBlock(chestRel, Blocks.CHEST);
+        BlockPos chestAbs = helper.absolutePos(chestRel);
+        net.minecraft.world.Container chest =
+                (net.minecraft.world.Container) helper.getLevel().getBlockEntity(chestAbs);
+        chest.setItem(0, new ItemStack(Items.OAK_LOG, 64)); // logs only — planks must be crafted
+        chest.setItem(1, new ItemStack(Items.OAK_SLAB, 32));
+        chest.setItem(2, new ItemStack(Items.TORCH, 4));
+        chest.setItem(3, new ItemStack(Items.DIRT, 32));
+        // let the builder know the chest and its contents from the start (deterministic)
+        storage.recordSnapshot(chestAbs, chest, helper.getLevel().getGameTime());
+
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getMemory().rememberContainer(chestAbs, 0);
+        ConstructionLedger.ConstructionSite site = ledger.addSite(SHELTER,
+                helper.absolutePos(new BlockPos(3, 2, 3)), Rotation.NONE,
+                helper.getLevel().getGameTime());
+        essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedSiteId(site.id());
+
+        helper.succeedWhen(() -> {
+            helper.assertBlockPresent(Blocks.OAK_PLANKS, new BlockPos(3, 2, 3)); // floor from crafted planks
+            helper.assertBlockPresent(Blocks.OAK_LOG, new BlockPos(3, 3, 3));    // a corner post
+        });
+    }
+
+    /**
+     * Owner question: a builder that needs a 3×3 item (a door) with no crafting table around
+     * must craft a table itself, place it, and craft at it — the player's own workflow. Storage
+     * holds only logs (plus the pre-made bed and foundation dirt), so the door and the table it
+     * takes to make one must both come from crafted planks. Proven by the door standing whole.
+     */
+    @GameTest(template = "empty11x11", timeoutTicks = 16000, batch = "dvConstructionCraftTable")
+    public static void builder_crafts_and_places_its_own_table(GameTestHelper helper) {
+        StorageLedger storage = StorageLedger.get(helper.getLevel());
+        storage.clear();
+        ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
+        ledger.clear();
+        perpetualDay(helper);
+
+        BlockPos chestRel = new BlockPos(9, 2, 1);
+        helper.setBlock(chestRel, Blocks.CHEST);
+        BlockPos chestAbs = helper.absolutePos(chestRel);
+        net.minecraft.world.Container chest =
+                (net.minecraft.world.Container) helper.getLevel().getBlockEntity(chestAbs);
+        chest.setItem(0, new ItemStack(Items.OAK_LOG, 64)); // planks, the door, and the TABLE come from these
+        chest.setItem(1, new ItemStack(Items.WHITE_BED, 1)); // the bed is pre-made (its own 3×3 is not the point)
+        chest.setItem(2, new ItemStack(Items.DIRT, 16));
+        storage.recordSnapshot(chestAbs, chest, helper.getLevel().getGameTime());
+
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getMemory().rememberContainer(chestAbs, 0);
+        ConstructionLedger.ConstructionSite site = ledger.addSite(
+                ResourceLocation.fromNamespaceAndPath(DynamicVillagers.MOD_ID, "fixture_hut"),
+                helper.absolutePos(new BlockPos(4, 2, 4)), Rotation.NONE,
+                helper.getLevel().getGameTime());
+        essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedSiteId(site.id());
+
+        helper.succeedWhen(() -> {
+            // a door can only exist if the builder crafted planks, crafted+placed a table from
+            // them, and crafted the door at that table — storage held none of those
+            helper.assertBlockPresent(Blocks.OAK_DOOR, new BlockPos(4, 3, 4)); // door lower
+            helper.assertBlockPresent(Blocks.OAK_DOOR, new BlockPos(4, 4, 4)); // door upper
+            helper.assertTrue(craftingTablePlacedNear(helper, new BlockPos(4, 2, 4)),
+                    "the builder should have crafted and placed its own crafting table");
+        });
+    }
+
+    /** Scans the footprint and its ring for a crafting table the builder put down. */
+    private static boolean craftingTablePlacedNear(GameTestHelper helper, BlockPos siteRel) {
+        for (BlockPos pos : BlockPos.betweenClosed(
+                siteRel.offset(-2, 0, -2), siteRel.offset(6, 2, 6))) {
+            if (helper.getBlockState(pos).is(Blocks.CRAFTING_TABLE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Owner directive: to break a block that won't drop bare-handed (a stone slab in the
      * footprint) the builder fetches a pickaxe from a chest first, rather than grinding it
      * out by hand. Verifies it ends up holding a pickaxe and clears the stone.

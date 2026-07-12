@@ -14,6 +14,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.PickaxeItem;
 import net.minecraft.world.item.ShovelItem;
+import net.minecraft.world.item.SwordItem;
 import net.neoforged.neoforge.common.Tags;
 
 import java.util.List;
@@ -44,6 +45,9 @@ public final class ItemFilter {
         }
         if (spec.equals("shovel")) {
             return stack -> stack.getItem() instanceof ShovelItem;
+        }
+        if (spec.equals("sword")) {
+            return stack -> stack.getItem() instanceof SwordItem;
         }
         if (spec.equals("sapling")) {
             return stack -> stack.is(ItemTags.SAPLINGS);

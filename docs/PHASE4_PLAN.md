@@ -8,7 +8,13 @@ construction* (4.1–4.5 — walls and roofs are not separate systems, they are 
 blueprint bottom-up looks like), *foundation laying* (4.2), *farm construction* (4.4),
 *dirt scaffolding* (4.5), *path building* (4.6), *repair damaged buildings* (4.7).
 
-Status: **4.0–4.7 complete; only 4.8 (gate) remains** (2026-07-11) — 89/89 gametests green.
+Status: **4.0–4.7 complete; only 4.8 (gate) remains** (2026-07-11) — **100/100 gametests green**
+(2026-07-12, up from 89: villager crafting + the Hunter role landed alongside — see below and
+AGENTS.md). **Villager crafting** now backs construction (the resolved "construction crafting"
+open question): builders craft their own planks/sticks/torches from gathered logs/coal and
+doors/beds at a crafting table, only requesting what they can neither fetch nor make. The
+**Hunter role** (butcher skin; kill → cook-on-campfire → deposit) was the owner's scheduled
+next-after-Phase-4 item, implemented in the same pass.
 **4.6 path building** landed: a `PathSite` polyline on the construction ledger, a **Path
 Marker** (bind villager, click ground waypoints, sneak-click to finish) and `/dv path
 add|list|cancel`; the builder terrain-follows the line, clears head-room, fills 1-deep gaps
@@ -336,12 +342,15 @@ Gaps Phase 4 must fill:
 
 ## Open questions / deferred
 
-- **Construction crafting (owner decision).** Without crafting, every plank/door/bed/torch
-  comes from player-stocked storage. A scoped milestone — builder walks to a crafting
-  table and crafts only what the active site's shortfall needs, via the vanilla
-  `RecipeManager` (logs→planks→sticks, doors, beds?, torches from coal the miners already
-  dig) — would make villages genuinely self-building one phase early. Flag for the 4.8
-  playtest conversation; default per decision 7 is out.
+- **Construction crafting (owner decision).** ~~Without crafting, every plank/door/bed/torch
+  comes from player-stocked storage.~~ **RESOLVED / IMPLEMENTED 2026-07-12** (owner chose
+  "builders craft their own materials"). Villager crafting now exists (`Crafting`, `CraftTask`,
+  `/dv craft`) with the player's 2×2-in-inventory vs. 3×3-at-a-table split, and
+  `BuilderPlanner.planMaterialSupply` crafts a site's shortfall from gathered logs/coal
+  (planks/sticks/torches in hand; doors/beds at a crafting table the builder places on the
+  footprint ring) before falling back to a `MaterialRequest`. Superseding decision 7's "no
+  crafting in Phase 4 core". Gametests: `CraftingTests`, `ConstructionTests
+  .builder_crafts_its_own_planks_from_logs`. See AGENTS.md "Villager crafting".
 - **Water buckets** (4.4) are the first non-block placement — if it feels wrong in play,
   the fallback is farm templates whose water hole must be dug to existing groundwater.
 - **Curating the vanilla catalog**: which of the vanilla village pieces (per biome —

@@ -649,11 +649,34 @@ You may update and modify this document with any useful information you find whi
   rebuilding. See docs/PHASE4_PLAN.md; gametest `demolished_house_frees_its_footprint`.
 
 ## Scheduled next after Phase 4 (owner, 2026-07-10)
-- **Hunter role** — see the idea entry below; pull it forward as the first work item once
-  Phase 4 closes (killing + cooking + depositing loop; sales wait for Phase 6).
-- **Lumberjack: plant extra saplings near felled trees** — beyond the current replant-on-
-  the-stump, plant spare saplings on nearby valid soil around recently cut trees so wooded
-  areas thicken instead of merely holding steady.
+- **Hunter role** — **IMPLEMENTED 2026-07-12**. `VillagerRole.HUNTER` ↔ `VillagerProfession.BUTCHER`
+  (the butcher skin arrives via the existing `SeekJobSiteBehavior` smoker claim — zero new
+  bridge code). `HunterPlanner` runs the kill → cook → deposit loop: `KillAnimalTask` chases
+  and melees the nearest adult food animal (cow/pig/chicken/sheep/rabbit) with a fetched sword
+  or bare hands (sword wears down like the miner's pickaxe); `CookAtCampfireTask` lays the raw
+  meat on a nearby **lit campfire** (owner decision: campfire, best-effort — no fuel/furnace
+  slots), waits out the ~600-tick cook and collects the cooked drops; then it hauls the surplus
+  food to storage. No campfire in sight → the raw meat is deposited as-is. **Selling** the food
+  to other villagers still waits for the Phase 6 economy. `/dv role hunter`; gametests in
+  `HunterTests` (kill, planner-driven hunt, direct cook, planner-driven cook, mapping).
+- **Lumberjack: plant extra saplings near felled trees** — **DONE** (in `LumberjackPlanner`,
+  `EXTRA_SAPLINGS`): spare saplings go onto nearby valid soil around a felled tree, not just
+  the stump, so copses thicken. (Was listed here as pending; the code already does it.)
+
+## Villager crafting (owner request; IMPLEMENTED 2026-07-12)
+Villagers craft via the vanilla `RecipeType.CRAFTING` recipe book — only what a player could,
+from real carried ingredients. The player's 2×2-vs-table split is honoured: recipes that fit a
+2×2 grid are made in the inventory on the spot; anything needing the full 3×3 grid sends the
+villager to a **crafting table** it walks to (fails if none is in reach and a table is
+required). `Crafting` holds the machinery (recipe lookup, the `needsTable` rule, ingredient
+consumption, and a bounded fetch/craft chain planner `ensureItem` for supply chains like
+logs → planks → door). `CraftTask` executes a craft; `/dv craft <villager> <item> <count>` is
+the debug entry point. **Builders craft their own materials** (owner decision, resolving the
+Phase 4 "construction crafting" open question): `BuilderPlanner.planMaterialSupply` prefers
+fetching what the storage network holds, otherwise crafts the shortfall from gathered logs/coal
+(planks/sticks/torches in-inventory; doors/beds at a table the builder places on the footprint
+ring like the staging chest), and only requests what it can neither fetch nor make. Gametests
+in `CraftingTests` plus `builder_crafts_its_own_planks_from_logs` in `ConstructionTests`.
 
 ## Owner ideas for future phases (not yet scheduled, 2026-07-10)
 
@@ -682,12 +705,9 @@ Captured for later planning — do not start implementing until a phase plan pic
 - **New role: Builder.** Constructs designated structures — this *is* Phase 4
   (Construction); no new roadmap phase needed, just implement the role there alongside the
   blueprint system.
-- **New role: Hunter.** Kills animals, cooks the meat (furnace or campfire — ties directly
-  into the standing smelting/cooking directive above), and supplies/sells that food to other
-  villagers alongside the Farmer. Gathering-shaped work (natural fit as a Phase 2-style
-  role, added after Phase 2 closed) but the "sell to other villagers" half needs Phase 6
-  economy (wages/buying/selling) to mean anything — implement the killing+cooking+depositing
-  loop whenever convenient, wire in actual sales once Phase 6 exists.
+- **New role: Hunter.** **IMPLEMENTED 2026-07-12** (kill + cook + deposit loop on a campfire;
+  butcher skin) — see "Scheduled next after Phase 4" above for detail. Still open: **selling**
+  the food to other villagers, which needs the Phase 6 economy (wages/buying/selling).
 - **Compatibility with Improved Village Placement**
   (https://modrinth.com/mod/improved-village-placement,
   https://github.com/Apollounknowndev/improved-village-placement). Owner is open to

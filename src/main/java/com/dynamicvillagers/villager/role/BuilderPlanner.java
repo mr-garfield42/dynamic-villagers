@@ -28,6 +28,10 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -60,6 +64,9 @@ public class BuilderPlanner implements RolePlanner {
     public static final int WORK_BATCH = 40;
     public static final String SCAFFOLD_FILTER = "scaffold"; // dirt or cobblestone
     private static final String CHEST_FILTER = "item:minecraft:chest";
+    private static final String TABLE_FILTER = "item:minecraft:crafting_table";
+    private static final int CRAFT_CHAIN_DEPTH = 4; // logs → planks → sticks → … is plenty
+    private static final int TABLE_SCAN = 8; // how far a placed table is found from where a builder crafts
     private static final int MIN_FREE_SLOTS = 4;
     private static final int FETCH_COOLDOWN = 600; // between restock attempts while short
     private static final int FETCH_CAP = 64; // one errand's worth of one material
@@ -234,19 +241,13 @@ public class BuilderPlanner implements RolePlanner {
                 if (ensureStaging(level, villager, essence, ledger, site, blueprint, now)) {
                     planned = true;
                 }
-                if (!essence.getMemory().knownContainers().isEmpty()) {
-                    // one trip stocks the whole build: top up every material the blueprint
-                    // needs, not just this batch's — walking back per item kind wastes days
-                    for (Map.Entry<Item, Integer> requirement : blueprint.requirements().entrySet()) {
-                        int wanted = Math.min(FETCH_CAP, requirement.getValue());
-                        if (essence.countItems(villager, stack -> stack.is(requirement.getKey())) < wanted) {
-                            queue.enqueue(new TakeItemsTask(
-                                    itemFilterSpec(requirement.getKey()), wanted));
-                            planned = true;
-                        }
-                    }
+                if (ensureCraftingTable(level, villager, essence, site, blueprint, missing, now)) {
+                    planned = true;
                 }
-                // 4.3: materials the network doesn't hold become requests on the board —
+                if (planMaterialSupply(level, villager, essence, blueprint, missing, now)) {
+                    planned = true;
+                }
+                // 4.3: whatever we still can't fetch or craft becomes a request on the board —
                 // gatherers redirect matching produce and haulers deliver, all Phase 3 code
                 postRequests(level, villager, essence, ledger, site, blueprint, missing, now);
             }
@@ -418,6 +419,106 @@ public class BuilderPlanner implements RolePlanner {
             StorageLedger.MaterialRequest request = storage.addRequest(spec, count, deliverTo, now);
             ledger.setSiteRequest(site, spec, request.id());
         }
+    }
+
+    /**
+     * Fetch-or-craft for every blueprint material still short (owner: builders make their own
+     * planks/sticks/doors/torches from gathered logs and coal). Prefers fetching what the
+     * storage network is known to hold; otherwise crafts it from carried/gatherable inputs via
+     * {@link Crafting}. Recipes needing a 3×3 table wait until one stands nearby — until then
+     * those items fall through to a request (the interim supply). @return true if a fetch or
+     * craft was enqueued.
+     */
+    private static boolean planMaterialSupply(ServerLevel level, Villager villager, VillagerEssence essence,
+                                              Blueprint blueprint, Map<Item, Integer> missing, long now) {
+        boolean tableReady = craftingTableNear(level, villager) != null;
+        boolean planned = false;
+        for (Map.Entry<Item, Integer> requirement : blueprint.requirements().entrySet()) {
+            Item item = requirement.getKey();
+            int wanted = Math.min(FETCH_CAP, requirement.getValue());
+            if (essence.countItems(villager, stack -> stack.is(item)) >= wanted) {
+                continue; // already stocked for the whole build
+            }
+            if (hasLedgerSource(level, villager, item, now)) {
+                essence.getTaskQueue().enqueue(new TakeItemsTask(itemFilterSpec(item), wanted));
+                planned = true;
+                continue;
+            }
+            List<RecipeHolder<CraftingRecipe>> recipes = Crafting.recipesFor(level, item);
+            if (!recipes.isEmpty() && Crafting.needsTable(recipes.getFirst().value()) && !tableReady) {
+                continue; // craft it once a table stands; requested as the interim fallback
+            }
+            if (!recipes.isEmpty() && Crafting.ensureItem(level, villager, essence, item, wanted,
+                    CRAFT_CHAIN_DEPTH) == Crafting.Provision.ENQUEUED) {
+                missing.remove(item); // we're making it — don't also post a request
+                planned = true;
+            } else if (!essence.getMemory().knownContainers().isEmpty()) {
+                // personal-memory discovery: a remembered chest the ledger hasn't recorded yet
+                // might still hold it (a possibly-wasted trip, the pre-crafting behavior)
+                essence.getTaskQueue().enqueue(new TakeItemsTask(itemFilterSpec(item), wanted));
+                planned = true;
+            }
+        }
+        return planned;
+    }
+
+    /**
+     * Keeps a crafting table standing near a site whose shortfall includes table-crafted items
+     * (doors, beds) the network can't supply — placed on the footprint ring like the staging
+     * chest and left as village infrastructure. @return true when work toward a table was
+     * enqueued.
+     */
+    private static boolean ensureCraftingTable(ServerLevel level, Villager villager, VillagerEssence essence,
+                                               ConstructionLedger.ConstructionSite site,
+                                               Blueprint blueprint, Map<Item, Integer> missing, long now) {
+        if (craftingTableNear(level, villager) != null || !needsTableForMissing(level, villager, missing, now)) {
+            return false;
+        }
+        if (essence.hasItem(villager, ItemFilter.parse(TABLE_FILTER))) {
+            BlockPos spot = stagingSpot(level, site, blueprint); // a free ring cell outside the footprint
+            if (spot == null) {
+                return false;
+            }
+            essence.getTaskQueue().enqueue(new PlaceBlockTask(spot, TABLE_FILTER));
+            return true;
+        }
+        // craft one from planks (2×2, no table) or fetch it — placed next cycle once carried
+        return Crafting.ensureItem(level, villager, essence, Items.CRAFTING_TABLE, 1, CRAFT_CHAIN_DEPTH)
+                == Crafting.Provision.ENQUEUED;
+    }
+
+    /** True when the shortfall has a table-crafted item the network can't just hand over. */
+    private static boolean needsTableForMissing(ServerLevel level, Villager villager,
+                                                Map<Item, Integer> missing, long now) {
+        for (Item item : missing.keySet()) {
+            if (hasLedgerSource(level, villager, item, now)) {
+                continue;
+            }
+            List<RecipeHolder<CraftingRecipe>> recipes = Crafting.recipesFor(level, item);
+            if (!recipes.isEmpty() && Crafting.needsTable(recipes.getFirst().value())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Nullable
+    private static BlockPos craftingTableNear(ServerLevel level, Villager villager) {
+        BlockPos origin = villager.blockPosition();
+        for (BlockPos pos : BlockPos.betweenClosed(
+                origin.offset(-TABLE_SCAN, -TABLE_SCAN, -TABLE_SCAN),
+                origin.offset(TABLE_SCAN, TABLE_SCAN, TABLE_SCAN))) {
+            if (level.getBlockState(pos).is(Blocks.CRAFTING_TABLE)) {
+                return pos.immutable();
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasLedgerSource(ServerLevel level, Villager villager, Item item, long now) {
+        return StorageLedger.get(level).findSource(
+                VillageAnchor.resolve(level, villager), villager.blockPosition(),
+                villager.getUUID(), stack -> stack.is(item), now, Set.of()) != null;
     }
 
     /**

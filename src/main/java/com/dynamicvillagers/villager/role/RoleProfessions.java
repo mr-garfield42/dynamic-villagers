@@ -19,13 +19,17 @@ public final class RoleProfessions {
             VillagerRole.FARMER, VillagerProfession.FARMER,
             VillagerRole.MINER, VillagerProfession.TOOLSMITH,
             VillagerRole.LUMBERJACK, VillagerProfession.FLETCHER,
-            VillagerRole.BUILDER, VillagerProfession.MASON);
+            VillagerRole.BUILDER, VillagerProfession.MASON,
+            // the hunter claims a smoker for the butcher skin (owner: "should be Butcher skin");
+            // its cooking is done physically on a campfire, not the smoker's furnace slots
+            VillagerRole.HUNTER, VillagerProfession.BUTCHER);
 
     private static final Map<VillagerProfession, VillagerRole> PROFESSION_TO_ROLE = Map.of(
             VillagerProfession.FARMER, VillagerRole.FARMER,
             VillagerProfession.TOOLSMITH, VillagerRole.MINER,
             VillagerProfession.FLETCHER, VillagerRole.LUMBERJACK,
             VillagerProfession.MASON, VillagerRole.BUILDER,
+            VillagerProfession.BUTCHER, VillagerRole.HUNTER,
             VillagerProfession.NONE, VillagerRole.NONE);
 
     /** The vanilla profession a role should acquire, or null for NONE / unmapped roles. */

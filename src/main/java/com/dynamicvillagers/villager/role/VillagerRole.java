@@ -14,7 +14,8 @@ public enum VillagerRole {
     LUMBERJACK,
     FARMER,
     MINER,
-    BUILDER;
+    BUILDER,
+    HUNTER;
 
     @Nullable
     public static VillagerRole byName(String name) {
