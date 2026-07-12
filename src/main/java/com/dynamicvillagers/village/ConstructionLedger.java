@@ -64,6 +64,7 @@ public class ConstructionLedger extends SavedData {
         private final Rotation rotation;
         private final long created;
         private Status status = Status.OPEN;
+        private boolean built; // has ever reached DONE — distinguishes not-yet-built from demolished
         @Nullable
         private BlockPos staging; // deliver-to container for this site's material requests
         private final Set<BlockPos> scaffold = new HashSet<>(); // temporary dirt we must tear down
@@ -101,6 +102,11 @@ public class ConstructionLedger extends SavedData {
 
         public Status status() {
             return status;
+        }
+
+        /** True once the building has ever been finished — a later empty footprint is demolition. */
+        public boolean wasBuilt() {
+            return built;
         }
 
         @Nullable
@@ -253,8 +259,53 @@ public class ConstructionLedger extends SavedData {
     public void setStatus(ConstructionSite site, Status status) {
         if (site.status != status) {
             site.status = status;
+            if (status == Status.DONE) {
+                site.built = true; // remember it was finished, so a later empty box is demolition
+            }
             setDirty();
         }
+    }
+
+    /**
+     * Removes sites whose building has been demolished — a site that was once finished but of
+     * which almost nothing remains in the world (the player tore it down). Called before
+     * placing a new site so a demolished house's stale record no longer blocks the spot as an
+     * overlap (owner playtest: "site refused" after breaking down the old houses). A merely
+     * damaged building (a hole) keeps its record and is repaired by the 4.7 machinery.
+     */
+    public int removeDemolishedSites(ServerLevel level) {
+        int removed = sites.size();
+        sites.removeIf(site -> isDemolished(level, site));
+        removed -= sites.size();
+        if (removed > 0) {
+            setDirty();
+        }
+        return removed;
+    }
+
+    /** A once-built site with less than a quarter of its solid blocks still standing. */
+    public static boolean isDemolished(ServerLevel level, ConstructionSite site) {
+        if (!site.built) {
+            return false; // never finished — an unbuilt site is not "demolished"
+        }
+        com.dynamicvillagers.construction.Blueprint blueprint =
+                com.dynamicvillagers.construction.Blueprints.load(level, site.templateId);
+        if (blueprint == null) {
+            return false;
+        }
+        int total = 0;
+        int present = 0;
+        for (var plan : blueprint.placedBlocks(site.origin, site.rotation)) {
+            if (plan.state().isAir()) {
+                continue; // only solid blocks count toward "still standing"
+            }
+            total++;
+            if (com.dynamicvillagers.construction.BlockMatch.matches(
+                    level.getBlockState(plan.pos()), plan.state())) {
+                present++;
+            }
+        }
+        return total > 0 && present * 4 < total; // < 25% remaining ⇒ demolished
     }
 
     public void setStaging(ConstructionSite site, @Nullable BlockPos staging) {
@@ -330,6 +381,7 @@ public class ConstructionLedger extends SavedData {
             siteTag.putString("rotation", site.rotation.name());
             siteTag.putLong("created", site.created);
             siteTag.putString("status", site.status.name());
+            siteTag.putBoolean("built", site.built);
             if (site.staging != null) {
                 siteTag.putLong("staging", site.staging.asLong());
             }
@@ -398,6 +450,8 @@ public class ConstructionLedger extends SavedData {
                     BlockPos.of(siteTag.getLong("origin")), rotation, siteTag.getLong("created"));
             Status status = Status.byName(siteTag.getString("status"));
             site.status = status != null ? status : Status.OPEN;
+            // legacy saves predate the flag: a DONE site was necessarily built once
+            site.built = siteTag.getBoolean("built") || site.status == Status.DONE;
             if (siteTag.contains("staging")) {
                 site.staging = BlockPos.of(siteTag.getLong("staging"));
             }

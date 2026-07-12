@@ -8,7 +8,7 @@ construction* (4.1–4.5 — walls and roofs are not separate systems, they are 
 blueprint bottom-up looks like), *foundation laying* (4.2), *farm construction* (4.4),
 *dirt scaffolding* (4.5), *path building* (4.6), *repair damaged buildings* (4.7).
 
-Status: **4.0–4.7 complete; only 4.8 (gate) remains** (2026-07-11) — 84/84 gametests green.
+Status: **4.0–4.7 complete; only 4.8 (gate) remains** (2026-07-11) — 89/89 gametests green.
 **4.6 path building** landed: a `PathSite` polyline on the construction ledger, a **Path
 Marker** (bind villager, click ground waypoints, sneak-click to finish) and `/dv path
 add|list|cancel`; the builder terrain-follows the line, clears head-room, fills 1-deep gaps
@@ -34,6 +34,18 @@ doubled suite time and stalled the house; with pickaxe-seeking, mining an obstru
 and its drop is recovered, so the mine-vs-scaffold tradeoff was resolved toward fast mining
 per the owner's stated priority. Scaffolding (for genuinely high blocks) is verified by the
 pillar test, which now asserts scaffold was placed and then fully torn down.
+
+Playtest fix (2026-07-11, demolition): tearing a finished house down by hand left its now-
+invisible `ConstructionSite` record on the ledger, and the record's footprint kept **refusing
+a new Building Marker** on the same spot as an overlap ("Site refused"). A site is now tracked
+as `built` once it first reaches DONE; `ConstructionLedger.removeDemolishedSites` drops any
+built site with **< 25% of its solid blocks still standing** (full demolition), and both the
+Building Marker and `/dv build add` sweep those away before the overlap check — so a razed
+footprint is free to rebuild. The `built` gate means a brand-new never-built site (also ~0%
+present) is never mistaken for a demolition, and a merely damaged house (a hole, still > 25%
+standing) still goes through the 4.7 repair path. An assigned builder watching a finished site
+that then gets fully demolished drops the record and releases itself rather than rebuilding a
+house nobody asked to keep. Gametest: `demolished_house_frees_its_footprint`.
 
 Older status line (kept for history): 4.0–4.5 + 4.7 complete; only 4.6 (paths) + 4.8 remain —
 full gametest suite **81/81 green** with Guard Villagers + Thief. A villager builds a real

@@ -638,6 +638,15 @@ You may update and modify this document with any useful information you find whi
     re-roled away from BUILDER — silently stopping the build (owner playtest regression).
 - **Builders build assigned sites only** (2026-07-10): no opportunistic adoption of open
   construction sites until the Phase 5 village manager assigns work properly.
+- **Demolished houses free their footprint** (2026-07-11, owner playtest): a house the player
+  tears down leaves a stale, now-invisible `ConstructionSite` on the ledger that used to
+  refuse a new Building Marker on the spot ("Site refused" overlap). A site is flagged `built`
+  once it first reaches DONE; `ConstructionLedger.removeDemolishedSites` drops any built site
+  with < 25% of its solid blocks still standing, run by the Building Marker and `/dv build add`
+  before their overlap check. The `built` gate keeps a never-built site (also ~0% present) from
+  being culled, and a merely damaged house (> 25% standing) still repairs via 4.7. A builder
+  watching a finished-then-fully-demolished site drops it and frees itself instead of
+  rebuilding. See docs/PHASE4_PLAN.md; gametest `demolished_house_frees_its_footprint`.
 
 ## Scheduled next after Phase 4 (owner, 2026-07-10)
 - **Hunter role** — see the idea entry below; pull it forward as the first work item once

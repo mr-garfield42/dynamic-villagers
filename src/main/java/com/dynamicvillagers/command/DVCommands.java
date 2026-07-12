@@ -416,17 +416,20 @@ public final class DVCommands {
             ctx.getSource().sendFailure(Component.literal("no structure template '" + templateId + "'"));
             return 0;
         }
+        ConstructionLedger ledger = ConstructionLedger.get(level);
+        // clear out records of houses that have been demolished so their footprint no longer
+        // refuses a new site as an overlap (matches the Building Marker's behavior)
+        ledger.removeDemolishedSites(level);
         if (!force) {
-            String error = SiteValidator.validate(level, ConstructionLedger.get(level),
-                    blueprint, origin, rotation);
+            String error = SiteValidator.validate(level, ledger, blueprint, origin, rotation);
             if (error != null) {
                 ctx.getSource().sendFailure(Component.literal(
                         "site refused: " + error + " (append 'force' to override)"));
                 return 0;
             }
         }
-        ConstructionLedger.ConstructionSite site = ConstructionLedger.get(level)
-                .addSite(templateId, origin, rotation, level.getGameTime());
+        ConstructionLedger.ConstructionSite site =
+                ledger.addSite(templateId, origin, rotation, level.getGameTime());
         var size = blueprint.size(rotation);
         ctx.getSource().sendSuccess(() -> Component.literal(
                 "site #%d: %s at %s (%s), %dx%dx%d, %d planned blocks%s".formatted(

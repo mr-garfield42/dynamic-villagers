@@ -101,6 +101,16 @@ public class BuilderPlanner implements RolePlanner {
         // is the same machinery as construction, not a separate system. An intact building
         // is idle-watched (no chores; the assignment is a standing post until reassigned).
         if (site.status() == ConstructionLedger.Status.DONE) {
+            if (ConstructionLedger.isDemolished(level, site)) {
+                // the whole building is gone — the player tore it down, not a stray creeper.
+                // Drop the record so the footprint frees up for a new build, and release this
+                // builder rather than rebuilding a house nobody asked to keep. A mere hole
+                // (still >25% standing) falls through to the repair path below instead.
+                cancelSiteRequests(level, ledger, site);
+                ledger.cancelSite(site.id());
+                essence.setAssignedSiteId(-1);
+                return false;
+            }
             if (hasDamage(level, site, blueprint)) {
                 ledger.setStatus(site, ConstructionLedger.Status.OPEN);
             } else {

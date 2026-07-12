@@ -487,6 +487,64 @@ public class ConstructionTests {
     }
 
     /**
+     * Owner playtest: after the player tears a finished house down, its stale (now invisible)
+     * site record used to keep refusing a new Building Marker on the same footprint as an
+     * "overlap". A once-built site with almost nothing left standing is treated as demolished
+     * and its record dropped, freeing the spot — while a brand-new never-built site (also ~0%
+     * present) is kept, so an unbuilt order is never mistaken for a demolition.
+     */
+    @GameTest(template = "empty11x11", batch = "dvConstructionDemolish")
+    public static void demolished_house_frees_its_footprint(GameTestHelper helper) {
+        net.minecraft.server.level.ServerLevel level = helper.getLevel();
+        ConstructionLedger ledger = ConstructionLedger.get(level);
+        ledger.clear();
+        Blueprint blueprint = Blueprints.load(level, SHELTER);
+
+        BlockPos origin = helper.absolutePos(new BlockPos(1, 2, 1));
+        ConstructionLedger.ConstructionSite built =
+                ledger.addSite(SHELTER, origin, Rotation.NONE, level.getGameTime());
+        // stand the whole house up (flag 2: no neighbor updates, so lone blocks don't pop)
+        for (Blueprint.PlannedBlock plan : blueprint.placedBlocks(origin, Rotation.NONE)) {
+            if (!plan.state().isAir()) {
+                level.setBlock(plan.pos(), plan.state(), 2);
+            }
+        }
+        ledger.setStatus(built, ConstructionLedger.Status.DONE);
+        helper.assertTrue(built.wasBuilt(), "a DONE site is remembered as having been built");
+        helper.assertTrue(!ConstructionLedger.isDemolished(level, built),
+                "an intact finished house is not demolished");
+
+        // a brand-new never-built site whose footprint is still empty ground must NOT be
+        // mistaken for a demolition just because ~0% of it stands yet
+        ConstructionLedger.ConstructionSite fresh = ledger.addSite(SHELTER,
+                helper.absolutePos(new BlockPos(6, 2, 6)), Rotation.NONE, level.getGameTime());
+        helper.assertTrue(!ConstructionLedger.isDemolished(level, fresh),
+                "a never-built site is not demolished");
+        helper.assertTrue(ledger.removeDemolishedSites(level) == 0,
+                "nothing is removed while the house still stands");
+
+        // the player tears the house down
+        for (Blueprint.PlannedBlock plan : blueprint.placedBlocks(origin, Rotation.NONE)) {
+            if (!plan.state().isAir()) {
+                level.setBlock(plan.pos(), Blocks.AIR.defaultBlockState(), 2);
+            }
+        }
+        helper.assertTrue(ConstructionLedger.isDemolished(level, built),
+                "a once-built house with its blocks gone is demolished");
+        helper.assertTrue(ledger.removeDemolishedSites(level) == 1
+                        && ledger.getSite(built.id()) == null,
+                "the demolished site's record is dropped");
+        helper.assertTrue(ledger.getSite(fresh.id()) != null,
+                "the never-built site survives the sweep");
+        helper.assertTrue(
+                SiteValidator.validate(level, ledger, blueprint, origin, Rotation.NONE) == null,
+                "a new house may now be placed where the demolished one stood");
+
+        ledger.clear();
+        helper.succeed();
+    }
+
+    /**
      * Owner directive proof: a villager builds a whole vanilla plains house from stocked
      * storage — the real template with jigsaws, two-part door and bed, connecting glass panes
      * and stairs, and a peaked roof reached by scaffolding. Asserted as substantial completion

@@ -73,15 +73,18 @@ public class BuildingMarkerItem extends SiteMarkerItem {
         }
         BlockPos origin = context.getClickedPos().relative(context.getClickedFace());
         Rotation rotation = rotation(stack);
-        String error = SiteValidator.validate(level, ConstructionLedger.get(level),
-                blueprint, origin, rotation);
+        ConstructionLedger ledger = ConstructionLedger.get(level);
+        // a house the player has torn down leaves a stale, now-invisible site record; drop
+        // those first so a demolished footprint no longer refuses a new marker as an overlap
+        ledger.removeDemolishedSites(level);
+        String error = SiteValidator.validate(level, ledger, blueprint, origin, rotation);
         if (error != null) {
             player.displayClientMessage(Component.literal(
                     "Site refused: " + error + " (/dv build add ... force overrides)"), true);
             return InteractionResult.FAIL;
         }
-        ConstructionLedger.ConstructionSite site = ConstructionLedger.get(level)
-                .addSite(templateId, origin, rotation, level.getGameTime());
+        ConstructionLedger.ConstructionSite site =
+                ledger.addSite(templateId, origin, rotation, level.getGameTime());
         VillagerEssence essence = VillagerEssence.get(villager);
         if (essence.getRole() != VillagerRole.BUILDER) {
             essence.setRole(VillagerRole.BUILDER);
