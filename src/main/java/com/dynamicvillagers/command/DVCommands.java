@@ -546,6 +546,7 @@ public final class DVCommands {
         }
         VillagerEssence essence = VillagerEssence.get(villager);
         essence.setRole(VillagerRole.BUILDER);
+        essence.setAssignedPathId(-1); // a building assignment replaces any path assignment
         essence.setAssignedSiteId(id);
         ctx.getSource().sendSuccess(() -> Component.literal(
                 "%s is now a builder assigned to site #%d (%s at %s)".formatted(
