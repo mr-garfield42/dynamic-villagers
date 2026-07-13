@@ -17,6 +17,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -73,11 +74,20 @@ public class MinerPlanner implements RolePlanner {
         }
 
         if (!essence.hasItem(villager, ItemFilter.parse("pickaxe"))) {
+            if (WorkerTools.planWoodenTool(level, villager, essence,
+                    Items.WOODEN_PICKAXE, "pickaxe")) {
+                return true;
+            }
             if (fetchWithCooldown(level, essence, "pickaxe", 1)) {
                 return true; // mine next cycle, pickaxe in hand
             }
             return RequestChore.plan(level, villager, essence, KEEP_ON_DEPOSIT)
                     || TorchChore.plan(level, villager, essence);
+        }
+
+        if (!canHarvestIron(villager, essence)
+                && WorkerTools.planCraftedItem(level, villager, essence, Items.STONE_PICKAXE, 1)) {
+            return true;
         }
 
         boolean hasTorches = essence.hasItem(villager, ItemFilter.parse(TorchChore.TORCH_FILTER));
@@ -161,7 +171,7 @@ public class MinerPlanner implements RolePlanner {
             // the face is where the miner will stand — dark tunnels need light first
             BlockPos standing = i == 0 ? site.start().relative(site.direction().getOpposite())
                     : site.start().relative(site.direction(), i - 1);
-            if (level.getBrightness(LightLayer.BLOCK, standing) < TorchChore.MIN_SAFE_BLOCK_LIGHT) {
+            if (workLight(level, standing) < TorchChore.MIN_SAFE_BLOCK_LIGHT) {
                 BlockPos torchSpot = hasTorches
                         ? TorchChore.findTorchSpotNear(level, standing, SITE_TORCH_RADIUS) : null;
                 if (torchSpot == null) {
@@ -227,7 +237,7 @@ public class MinerPlanner implements RolePlanner {
                 }
             }
             BlockPos standing = batch.getFirst().above();
-            if (level.getBrightness(LightLayer.BLOCK, standing) < TorchChore.MIN_SAFE_BLOCK_LIGHT) {
+            if (workLight(level, standing) < TorchChore.MIN_SAFE_BLOCK_LIGHT) {
                 // a torch must not stand on a block THIS batch is about to dig ("placed then
                 // broken a second later"); supports dug in later layers are fine — the torch
                 // serves its layer and gets re-placed deeper, the way players re-torch
@@ -294,10 +304,15 @@ public class MinerPlanner implements RolePlanner {
             BlockPos neighbor = ore.relative(direction);
             if (level.getBlockState(neighbor).isAir()) {
                 anyAir = true;
-                light = Math.max(light, level.getBrightness(LightLayer.BLOCK, neighbor));
+                light = Math.max(light, workLight(level, neighbor));
             }
         }
         return anyAir && light < TorchChore.MIN_SAFE_BLOCK_LIGHT;
+    }
+
+    private static int workLight(ServerLevel level, BlockPos pos) {
+        if (level.isDay() && level.canSeeSky(pos)) return 15;
+        return level.getBrightness(LightLayer.BLOCK, pos);
     }
 
     private static boolean fetchWithCooldown(ServerLevel level, VillagerEssence essence,
@@ -359,6 +374,11 @@ public class MinerPlanner implements RolePlanner {
         }
         VillagerEssence.SlotRef tool = essence.findBestTool(villager, state);
         return tool != null && tool.stack().isCorrectToolForDrops(state);
+    }
+
+    private static boolean canHarvestIron(Villager villager, VillagerEssence essence) {
+        VillagerEssence.SlotRef tool = essence.findBestTool(villager, Blocks.IRON_ORE.defaultBlockState());
+        return tool != null && tool.stack().isCorrectToolForDrops(Blocks.IRON_ORE.defaultBlockState());
     }
 
     private static boolean isExposed(ServerLevel level, BlockPos pos) {

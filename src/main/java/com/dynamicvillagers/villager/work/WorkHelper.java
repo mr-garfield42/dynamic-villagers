@@ -7,10 +7,16 @@ import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 public final class WorkHelper {
     public static final double REACH = 4.0; // from the eyes, slightly under player reach
@@ -22,6 +28,11 @@ public final class WorkHelper {
 
     /** Looks at the target and walks toward it when out of reach. @return true when in reach. */
     public static boolean moveIntoReachAndLook(Villager villager, BlockPos pos) {
+        return moveIntoReachAndLook(villager, pos, pos, 2);
+    }
+
+    public static boolean moveIntoReachAndLook(Villager villager, BlockPos pos,
+                                               BlockPos walkTo, int closeEnough) {
         villager.getBrain().setMemory(MemoryModuleType.LOOK_TARGET, new BlockPosTracker(pos));
         // Drive the head directly too: our behaviors run after vanilla's look sink each brain
         // tick, so this wins over idle look-at-player targets and pins the gaze on the block.
@@ -29,10 +40,45 @@ public final class WorkHelper {
         if (villager.getEyePosition().distanceToSqr(Vec3.atCenterOf(pos)) > REACH * REACH) {
             // every tick, not periodically: the moment the walk target clears (reached or
             // path failed), an idle stroll would hijack it and the worker wanders off mid-job
-            villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(pos, WALK_SPEED, 2));
+            villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+                    new WalkTarget(walkTo, WALK_SPEED, closeEnough));
             return false;
         }
         return true;
+    }
+
+    @Nullable
+    public static BlockPos findReachableWorkPosition(ServerLevel level, Villager villager,
+                                                     BlockPos target, int attempt) {
+        List<BlockPos> candidates = new ArrayList<>();
+        for (int radius = 1; radius <= 3; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
+                    for (int dy = -2; dy <= 1; dy++) {
+                        BlockPos pos = target.offset(dx, dy, dz);
+                        Vec3 eyes = Vec3.atBottomCenterOf(pos).add(0.0, villager.getEyeHeight(), 0.0);
+                        if (eyes.distanceToSqr(Vec3.atCenterOf(target)) > REACH * REACH
+                                || !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty()
+                                || !level.getBlockState(pos.above()).getCollisionShape(level, pos.above()).isEmpty()
+                                || !level.getBlockState(pos.below()).isFaceSturdy(level, pos.below(), net.minecraft.core.Direction.UP)
+                                || !level.getEntitiesOfClass(Villager.class, new AABB(pos), other -> other != villager).isEmpty()) {
+                            continue;
+                        }
+                        candidates.add(pos.immutable());
+                    }
+                }
+            }
+        }
+        candidates.sort(Comparator.comparingDouble(pos -> pos.distSqr(villager.blockPosition())));
+        for (int i = 0; i < candidates.size(); i++) {
+            BlockPos candidate = candidates.get(Math.floorMod(i + attempt, candidates.size()));
+            Path path = villager.getNavigation().createPath(candidate, 0);
+            if (path != null && path.canReach()) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     /**

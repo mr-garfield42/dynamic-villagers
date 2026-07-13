@@ -5,6 +5,9 @@ import com.dynamicvillagers.village.VillageAnchor;
 import com.dynamicvillagers.villager.PerceptionSystem;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.task.DepositToContainerTask;
+import com.dynamicvillagers.villager.task.BreakBlockTask;
+import com.dynamicvillagers.villager.task.GoToTask;
+import com.dynamicvillagers.villager.task.PickUpItemsTask;
 import com.dynamicvillagers.villager.task.PlaceBlockTask;
 import com.dynamicvillagers.villager.task.TakeItemsTask;
 import com.dynamicvillagers.villager.task.TaskQueue;
@@ -12,11 +15,15 @@ import com.dynamicvillagers.villager.task.TillSoilTask;
 import com.dynamicvillagers.villager.work.ItemFilter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
@@ -35,7 +42,7 @@ public class FarmerPlanner implements RolePlanner {
     private static final List<String> KEEP_ON_DEPOSIT = List.of("hoe", "seeds", "food");
     private static final int MIN_FREE_SLOTS = 4;
     private static final int HAUL_THRESHOLD = 16; // deposit once carrying this many non-kept items
-    private static final int SCAN_RADIUS = 8;
+    private static final int SCAN_RADIUS = 12;
     private static final int SCAN_HEIGHT = 3;
     private static final int MAX_SPOTS = 8;
     private static final int MAX_TASKS_PER_CYCLE = 4;
@@ -62,9 +69,27 @@ public class FarmerPlanner implements RolePlanner {
             return false; // full and nowhere to store
         }
 
+        BlockPos workAnchor = workAnchor(level, villager);
+        if (!workAnchor.closerThan(villager.blockPosition(), SCAN_RADIUS - 2)) {
+            queue.enqueue(new GoToTask(workAnchor, 2));
+            return true;
+        }
+
+        List<BlockPos> harvestSpots = new ArrayList<>();
         List<BlockPos> plantSpots = new ArrayList<>();
         List<BlockPos> tillSpots = new ArrayList<>();
-        scan(level, villager, plantSpots, tillSpots);
+        scan(level, villager, workAnchor, harvestSpots, plantSpots, tillSpots);
+
+        if (!harvestSpots.isEmpty()) {
+            List<BlockPos> batch = harvestSpots.subList(0, Math.min(MAX_TASKS_PER_CYCLE, harvestSpots.size()));
+            for (BlockPos crop : batch) queue.enqueue(new BreakBlockTask(crop));
+            queue.enqueue(new PickUpItemsTask(batch.getFirst(), 6.0));
+            for (BlockPos crop : batch) queue.enqueue(new PlaceBlockTask(crop, seedFilter(level.getBlockState(crop))));
+            return true;
+        }
+        if (WorkerTools.planStoneUpgrade(level, villager, essence, Items.WOODEN_HOE, Items.STONE_HOE)) {
+            return true;
+        }
 
         long now = level.getGameTime();
         boolean planned = false;
@@ -88,11 +113,15 @@ public class FarmerPlanner implements RolePlanner {
                 queue.enqueue(new TillSoilTask(spot));
             }
             planned = true;
-        } else if (!tillSpots.isEmpty() && !essence.getMemory().knownContainers().isEmpty()
-                && now >= essence.getNextToolFetchTime()) {
-            essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
-            queue.enqueue(new TakeItemsTask("hoe", 1));
-            planned = true; // tilling happens next cycle, hoe in hand
+        } else if (!tillSpots.isEmpty()) {
+            if (WorkerTools.planWoodenTool(level, villager, essence, Items.WOODEN_HOE, "hoe")) {
+                planned = true;
+            } else if (!essence.getMemory().knownContainers().isEmpty()
+                    && now >= essence.getNextToolFetchTime()) {
+                essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
+                queue.enqueue(new TakeItemsTask("hoe", 1));
+                planned = true; // tilling happens next cycle, hoe in hand
+            }
         }
 
         return planned
@@ -100,16 +129,26 @@ public class FarmerPlanner implements RolePlanner {
                 || TorchChore.plan(level, villager, essence);
     }
 
-    private void scan(ServerLevel level, Villager villager,
+    private static BlockPos workAnchor(ServerLevel level, Villager villager) {
+        return villager.getBrain().getMemory(MemoryModuleType.JOB_SITE)
+                .or(() -> villager.getBrain().getMemory(MemoryModuleType.POTENTIAL_JOB_SITE))
+                .filter(pos -> pos.dimension().equals(level.dimension()))
+                .map(GlobalPos::pos)
+                .orElse(villager.blockPosition());
+    }
+
+    private void scan(ServerLevel level, Villager villager, BlockPos origin, List<BlockPos> harvestSpots,
                       List<BlockPos> plantSpots, List<BlockPos> tillSpots) {
-        BlockPos origin = villager.blockPosition();
+        List<BlockPos> harvestCandidates = new ArrayList<>();
         List<BlockPos> plantCandidates = new ArrayList<>();
         List<BlockPos> tillCandidates = new ArrayList<>();
         for (BlockPos pos : BlockPos.betweenClosed(
                 origin.offset(-SCAN_RADIUS, -SCAN_HEIGHT, -SCAN_RADIUS),
                 origin.offset(SCAN_RADIUS, SCAN_HEIGHT, SCAN_RADIUS))) {
             BlockState state = level.getBlockState(pos);
-            if (state.is(Blocks.FARMLAND) && level.getBlockState(pos.above()).isAir()) {
+            if (state.getBlock() instanceof CropBlock crop && crop.isMaxAge(state)) {
+                harvestCandidates.add(pos.immutable());
+            } else if (state.is(Blocks.FARMLAND) && level.getBlockState(pos.above()).isAir()) {
                 plantCandidates.add(pos.above().immutable());
             } else if ((state.is(Blocks.DIRT) || state.is(Blocks.GRASS_BLOCK))
                     && level.getBlockState(pos.above()).isAir()
@@ -118,8 +157,16 @@ public class FarmerPlanner implements RolePlanner {
                 tillCandidates.add(pos.immutable());
             }
         }
+        keepVisibleNearest(level, villager, origin, harvestCandidates, harvestSpots);
         keepVisibleNearest(level, villager, origin, plantCandidates, plantSpots);
         keepVisibleNearest(level, villager, origin, tillCandidates, tillSpots);
+    }
+
+    private static String seedFilter(BlockState crop) {
+        if (crop.is(Blocks.CARROTS)) return "item:minecraft:carrot";
+        if (crop.is(Blocks.POTATOES)) return "item:minecraft:potato";
+        if (crop.is(Blocks.BEETROOTS)) return "item:minecraft:beetroot_seeds";
+        return "item:minecraft:wheat_seeds";
     }
 
     private static void keepVisibleNearest(ServerLevel level, Villager villager, BlockPos origin,

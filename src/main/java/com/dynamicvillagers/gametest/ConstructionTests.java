@@ -264,7 +264,7 @@ public class ConstructionTests {
      * build what IS in hand, leave only the short entries waiting, and finish once the
      * material shows up in storage.
      */
-    @GameTest(template = "empty11x11", timeoutTicks = 9000, batch = "dvConstructionRestock")
+    @GameTest(template = "empty11x11", timeoutTicks = 12000, batch = "dvConstructionRestock")
     public static void builder_restocks_and_builds_around_missing_materials(GameTestHelper helper) {
         StorageLedger.get(helper.getLevel()).clear();
         ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());
@@ -452,7 +452,7 @@ public class ConstructionTests {
     }
 
     /** 4.7 repair: damage to a finished building is detected and rebuilt (same diff machinery). */
-    @GameTest(template = "empty11x11", timeoutTicks = 8000, batch = "dvConstructionRepair")
+    @GameTest(template = "empty11x11", timeoutTicks = 12000, batch = "dvConstructionRepair")
     public static void builder_repairs_damaged_wall(GameTestHelper helper) {
         StorageLedger.get(helper.getLevel()).clear();
         ConstructionLedger ledger = ConstructionLedger.get(helper.getLevel());

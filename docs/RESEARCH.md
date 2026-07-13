@@ -196,6 +196,85 @@ Verified against the recompiled 1.21.1/neoforge-21.1.235 sources in the Gradle c
   `<world>/generated/<ns>/structures/`; copy into mod resources. Include `DataVersion`
   (1.21.1 = 3955) so DFU leaves the file alone.
 
+## Population & village mechanics (Phase 5 research, 2026-07-12)
+
+Verified against the decompiled `build/moddev/artifacts/neoforge-21.1.235-sources.jar`
+(`Villager`, `VillagerMakeLove`) and the vanilla POI system. Drives docs/PHASE5_PLAN.md.
+
+- **Villager breeding does NOT fire `BabyEntitySpawnEvent`** — that event sits on the
+  `Animal.spawnChildFromBreeding` path. Villagers breed through the brain behavior
+  `VillagerMakeLove.breed`: `parent.getBreedOffspring(...)` builds the child and calls
+  `villager.finalizeSpawn(level, ..., MobSpawnType.BREEDING, null)`, then
+  `level.addFreshEntityWithPassengers(villager)`.
+- **Capacity gate = `FinalizeSpawnEvent`.** `VillagerMakeLove.breed` carries a NeoForge patch —
+  *"If villager is blocked from spawning (e.g., FinalizeSpawnEvent), then breed should be
+  unsuccessful"* — and returns empty when `!villager.isAddedToLevel()`. Cancelling
+  `FinalizeSpawnEvent` where `getSpawnType() == BREEDING` for an over-capacity village cleanly
+  aborts the birth (parents just stay unbred, no half-states). This is the population-cap hook.
+- **Vanilla already gates breeding on a free bed.** `VillagerMakeLove` only breeds when it
+  `canReach` an unclaimed `PoiTypes.HOME` within the POI's `validRange` (≈48). So bed count is
+  a natural soft cap; `VillagerMakeLove.giveBedToChild` sets the newborn's `HOME` memory.
+- **Bed/village-center counting via the POI manager** (no block scanning):
+  `ServerLevel.getPoiManager()` + `PoiTypes.HOME` (`getInRange`/`getCountInRange` with an
+  occupancy predicate) = total vs. free beds; `PoiTypes.MEETING` (bell) = village center.
+- **Newborn registration** hooks `EntityJoinLevelEvent` (baby villager added to level).
+  **Aging** is vanilla `AgeableMob` (`setAge(-24000)` newborn → grows to 0); notice the baby→
+  adult transition by polling age in the manager tick, not via an event.
+- **Our hunger is independent of vanilla breeding food.** `HungerSystem` stores hunger in the
+  DV attachment; vanilla breeding willingness reads the separate hidden `Villager.foodLevel`.
+  No interference — unifying them is a Phase 6 (economy) question.
+
+### Phase 5 implementation follow-up (2026-07-13)
+
+Verified against `VillagerGoalPackages`, `Brain`, `SocializeAtBell`, `InteractWith`,
+`FinalizeSpawnEvent`, `PoiManager`, and `PoiRecord` from the pinned source jar, plus the official
+NeoForge documentation for [SavedData](https://docs.neoforged.net/docs/datastorage/saveddata/),
+[attachments](https://docs.neoforged.net/docs/1.21.1/datastorage/attachments/),
+[events](https://docs.neoforged.net/docs/1.21.1/concepts/events/), and
+[networking](https://docs.neoforged.net/docs/1.21.1/networking/).
+
+- **Social movement and DV work can overlap.** Vanilla puts `SocializeAtBell` in `MEET` and
+  villager-following `InteractWith` in `IDLE`; DV plans and executes tasks in `CORE`, which runs
+  alongside the active non-core activity. Changing the whole schedule or replacing the vanilla
+  packages would be unnecessarily invasive. A CORE behavior can instead clear only villager
+  interaction/breeding memories and `WalkTarget`s backed by a villager `EntityTracker` while a
+  real DV task is queued. Item- and block-backed targets remain intact. With an empty queue the
+  behavior does not start, preserving vanilla socializing.
+- **Use `FinalizeSpawnEvent#setSpawnCancelled`, not event cancellation.** NeoForge's event source
+  explicitly distinguishes cancelling `finalizeSpawn` from preventing the entity spawn. The
+  latter is what the patched `VillagerMakeLove` checks through `isAddedToLevel()`.
+- **Population must not be derived only from loaded entities.** Persistent membership records now
+  retain child/adult state. Loaded members refresh that bit on the manager tick; unloaded members
+  remain in the tally, and deaths remove their membership through `LivingDeathEvent`.
+- **Validate POI records against the current block state when counting capacity.** POI updates are
+  normally automatic, but rapid structure teardown/replacement (especially GameTest arenas) can
+  briefly expose records whose world block has already changed. Bed capacity therefore accepts
+  only records whose current block is a bed head.
+- **Datapack catalog loading uses the vanilla reload pipeline.** A
+  `SimpleJsonResourceReloadListener` reads `data/<namespace>/building_catalog/*.json`; templates
+  still load from the public structure manager and their footprint/material bill remains derived
+  by `Blueprint` rather than duplicated in JSON.
+
+### Population bootstrap, guards, and worker tools (2026-07-13)
+
+Verified against the pinned NeoForge/Minecraft sources and Guard Villagers' `1.21.1` branch.
+
+- **Use vanilla `SpawnUtil.trySpawnMob` for the one-time population bootstrap.** It finds a valid
+  surface, creates the villager with `MobSpawnType.STRUCTURE`, runs normal finalization, and adds it
+  to the level. The manager only enables this inside a real `StructureTags.VILLAGE` piece, so a
+  player-placed bell does not manufacture 25 villagers. A persisted completion flag makes this
+  initial seeding rather than permanent death replacement.
+- **Guard Villagers needs no duplicate name store.** Its guard is the registered
+  `guardvillagers:guard` entity and preserves vanilla `CustomName`; converted guards already carry
+  their villager name. Naming unnamed guards on `EntityJoinLevelEvent` covers natural guard spawns,
+  and counting by registry id avoids copying or replacing Guard Villagers internals.
+- **Worker tools stay inside the existing vanilla-recipe crafting system.** Wooden tools and
+  chests require the same carried ingredients a player uses. Tool recipes need a 3×3 table, so a
+  worker with logs first crafts and physically places a table when none is nearby.
+- **Stone gathering must be assignment-scoped.** A broad scan for exposed base stone caused miners
+  to dig ordinary terrain and damaged the quarry walk-out ramp test. Starter miners now receive a
+  manager-designated quarry and obtain cobblestone there before upgrading and mining exposed iron.
+
 ## Build/dev environment notes (this machine)
 
 - Portable JDK 21 (Temurin 21.0.11) at `%USERPROFILE%\.jdks\jdk-21.0.11+10` — **not on PATH**;

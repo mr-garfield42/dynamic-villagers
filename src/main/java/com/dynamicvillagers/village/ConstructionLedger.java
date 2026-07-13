@@ -52,6 +52,18 @@ public class ConstructionLedger extends SavedData {
         }
     }
 
+    public enum SiteType {
+        MANUAL, HOUSE, FARM, WAREHOUSE;
+
+        public static SiteType byName(String name) {
+            try {
+                return valueOf(name);
+            } catch (IllegalArgumentException e) {
+                return MANUAL;
+            }
+        }
+    }
+
     /** A short-lived "these blocks are my batch" claim. */
     public record Claim(UUID holder, long expiry) {
     }
@@ -63,6 +75,8 @@ public class ConstructionLedger extends SavedData {
         private final BlockPos origin;
         private final Rotation rotation;
         private final long created;
+        private final int villageId;
+        private final SiteType type;
         private Status status = Status.OPEN;
         private boolean built; // has ever reached DONE — distinguishes not-yet-built from demolished
         @Nullable
@@ -73,11 +87,18 @@ public class ConstructionLedger extends SavedData {
 
         private ConstructionSite(int id, ResourceLocation templateId, BlockPos origin,
                                  Rotation rotation, long created) {
+            this(id, templateId, origin, rotation, created, -1, SiteType.MANUAL);
+        }
+
+        private ConstructionSite(int id, ResourceLocation templateId, BlockPos origin,
+                                 Rotation rotation, long created, int villageId, SiteType type) {
             this.id = id;
             this.templateId = templateId;
             this.origin = origin;
             this.rotation = rotation;
             this.created = created;
+            this.villageId = villageId;
+            this.type = type;
         }
 
         public int id() {
@@ -98,6 +119,14 @@ public class ConstructionLedger extends SavedData {
 
         public long created() {
             return created;
+        }
+
+        public int villageId() {
+            return villageId;
+        }
+
+        public SiteType type() {
+            return type;
         }
 
         public Status status() {
@@ -180,6 +209,15 @@ public class ConstructionLedger extends SavedData {
                                     Rotation rotation, long now) {
         ConstructionSite site = new ConstructionSite(nextSiteId++, templateId,
                 origin.immutable(), rotation, now);
+        sites.add(site);
+        setDirty();
+        return site;
+    }
+
+    public ConstructionSite addSite(ResourceLocation templateId, BlockPos origin,
+                                    Rotation rotation, long now, int villageId, SiteType type) {
+        ConstructionSite site = new ConstructionSite(nextSiteId++, templateId,
+                origin.immutable(), rotation, now, villageId, type);
         sites.add(site);
         setDirty();
         return site;
@@ -380,6 +418,8 @@ public class ConstructionLedger extends SavedData {
             siteTag.putLong("origin", site.origin.asLong());
             siteTag.putString("rotation", site.rotation.name());
             siteTag.putLong("created", site.created);
+            siteTag.putInt("village", site.villageId);
+            siteTag.putString("type", site.type.name());
             siteTag.putString("status", site.status.name());
             siteTag.putBoolean("built", site.built);
             if (site.staging != null) {
@@ -447,7 +487,9 @@ public class ConstructionLedger extends SavedData {
                 rotation = Rotation.NONE;
             }
             ConstructionSite site = new ConstructionSite(siteTag.getInt("id"), templateId,
-                    BlockPos.of(siteTag.getLong("origin")), rotation, siteTag.getLong("created"));
+                    BlockPos.of(siteTag.getLong("origin")), rotation, siteTag.getLong("created"),
+                    siteTag.contains("village") ? siteTag.getInt("village") : -1,
+                    SiteType.byName(siteTag.getString("type")));
             Status status = Status.byName(siteTag.getString("status"));
             site.status = status != null ? status : Status.OPEN;
             // legacy saves predate the flag: a DONE site was necessarily built once

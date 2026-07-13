@@ -14,6 +14,11 @@ import net.minecraft.world.entity.npc.Villager;
 public final class VillageAnchor {
 
     public static BlockPos resolve(ServerLevel level, Villager villager) {
+        Village home = VillageManager.get(level).getVillage(
+                com.dynamicvillagers.villager.VillagerEssence.get(villager).getHomeVillageId());
+        if (home != null) {
+            return home.anchor();
+        }
         return villager.getBrain().getMemory(MemoryModuleType.MEETING_POINT)
                 .filter(globalPos -> globalPos.dimension() == level.dimension())
                 .map(GlobalPos::pos)

@@ -44,6 +44,10 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
     private QuarrySite quarrySite;
     private int assignedSiteId = -1; // construction site this villager was told to work; -1 = none
     private int assignedPathId = -1; // path this villager was told to build; -1 = none
+    private int homeVillageId = -1;
+    @Nullable
+    private String generatedName;
+    private boolean managerManagedRole;
     private final SimpleContainer extraInventory = new SimpleContainer(EXTRA_SLOTS);
     private final VillagerMemory memory = new VillagerMemory();
     private final TaskQueue taskQueue = new TaskQueue();
@@ -130,6 +134,31 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
     /** The villager has been told to build a specific site or path — it is a committed builder. */
     public boolean hasBuildAssignment() {
         return assignedSiteId != -1 || assignedPathId != -1;
+    }
+
+    public int getHomeVillageId() {
+        return homeVillageId;
+    }
+
+    public void setHomeVillageId(int villageId) {
+        this.homeVillageId = villageId;
+    }
+
+    @Nullable
+    public String getGeneratedName() {
+        return generatedName;
+    }
+
+    public void setGeneratedName(@Nullable String name) {
+        this.generatedName = name;
+    }
+
+    public boolean isManagerManagedRole() {
+        return managerManagedRole;
+    }
+
+    public void setManagerManagedRole(boolean managed) {
+        this.managerManagedRole = managed;
     }
 
     public long getNextTorchFetchTime() {
@@ -248,6 +277,11 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
         }
         tag.putInt("assigned_site", assignedSiteId);
         tag.putInt("assigned_path", assignedPathId);
+        tag.putInt("home_village", homeVillageId);
+        if (generatedName != null) {
+            tag.putString("generated_name", generatedName);
+        }
+        tag.putBoolean("manager_managed_role", managerManagedRole);
         tag.put("extra_inventory", extraInventory.createTag(provider));
         tag.put("memory_containers", memory.save());
         tag.put("memory_spots", memory.saveSpots());
@@ -275,6 +309,9 @@ public class VillagerEssence implements INBTSerializable<CompoundTag> {
         }
         assignedSiteId = tag.contains("assigned_site") ? tag.getInt("assigned_site") : -1;
         assignedPathId = tag.contains("assigned_path") ? tag.getInt("assigned_path") : -1;
+        homeVillageId = tag.contains("home_village") ? tag.getInt("home_village") : -1;
+        generatedName = tag.contains("generated_name") ? tag.getString("generated_name") : null;
+        managerManagedRole = tag.getBoolean("manager_managed_role");
         extraInventory.fromTag(tag.getList("extra_inventory", Tag.TAG_COMPOUND), provider);
         memory.load(tag.getList("memory_containers", Tag.TAG_COMPOUND));
         memory.loadSpots(tag.getCompound("memory_spots"));

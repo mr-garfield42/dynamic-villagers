@@ -2,6 +2,9 @@ package com.dynamicvillagers.item;
 
 import com.dynamicvillagers.DynamicVillagers;
 import com.dynamicvillagers.network.VillagerDebugStatePayload;
+import com.dynamicvillagers.network.VillageDebugStatePayload;
+import com.dynamicvillagers.village.Village;
+import com.dynamicvillagers.village.VillageManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -9,6 +12,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Blocks;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -83,6 +87,23 @@ public final class DVItems {
      * own GUI before the item's useOn ever runs.
      */
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getItemStack().is(DEBUG_WAND.get()) && event.getLevel().getBlockState(event.getPos()).is(Blocks.BELL)) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide));
+            if (event.getLevel() instanceof ServerLevel level && event.getEntity() instanceof ServerPlayer player) {
+                if (!player.hasPermissions(2)) {
+                    player.displayClientMessage(Component.literal("The debug wand requires permission level 2"), true);
+                    return;
+                }
+                Village village = VillageManager.get(level).villageAt(event.getPos());
+                if (village == null) {
+                    player.displayClientMessage(Component.literal("This bell is not part of a managed village yet"), true);
+                    return;
+                }
+                PacketDistributor.sendToPlayer(player, VillageDebugStatePayload.snapshot(level, village));
+            }
+            return;
+        }
         if (!(event.getItemStack().getItem() instanceof StorageMarkerItem)) {
             return;
         }

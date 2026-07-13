@@ -6,9 +6,11 @@ import com.dynamicvillagers.villager.behavior.ExecuteTaskBehavior;
 import com.dynamicvillagers.villager.behavior.PlanWorkBehavior;
 import com.dynamicvillagers.villager.behavior.SeekFoodItemBehavior;
 import com.dynamicvillagers.villager.behavior.SeekJobSiteBehavior;
+import com.dynamicvillagers.villager.behavior.WorkFocusBehavior;
 import com.dynamicvillagers.villager.role.RoleProfessions;
 import com.dynamicvillagers.villager.role.VillagerRole;
 import com.google.common.collect.ImmutableList;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.Brain;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.npc.VillagerData;
@@ -33,6 +35,7 @@ public abstract class VillagerMixin {
      */
     @Inject(method = "registerBrainGoals", at = @At("TAIL"))
     private void dynamicvillagers$addCoreBehaviors(Brain<Villager> brain, CallbackInfo ci) {
+        brain.addActivity(Activity.CORE, 98, ImmutableList.of(new WorkFocusBehavior()));
         // SeekJobSiteBehavior first so it lands at CORE priority 5, ahead of vanilla's
         // AcquirePoi at 6 — our specific-jobsite claim wins over vanilla's any-job grab.
         brain.addActivity(Activity.CORE, 5, ImmutableList.of(
@@ -41,6 +44,15 @@ public abstract class VillagerMixin {
                 new SeekFoodItemBehavior(),
                 new PlanWorkBehavior(),
                 new ExecuteTaskBehavior()));
+    }
+
+    @Inject(method = "customServerAiStep", at = @At("TAIL"))
+    private void dynamicvillagers$finishWorkFocused(CallbackInfo ci) {
+        Villager self = (Villager) (Object) this;
+        PlanWorkBehavior.tryPlan((ServerLevel) self.level(), self, false);
+        if (!VillagerEssence.get(self).getTaskQueue().isEmpty()) {
+            WorkFocusBehavior.beginWork(self);
+        }
     }
 
     /**
@@ -73,6 +85,7 @@ public abstract class VillagerMixin {
         VillagerRole mapped = RoleProfessions.roleFor(newProfession);
         if (mapped != null && essence.getRole() != mapped) {
             essence.setRole(mapped);
+            essence.setManagerManagedRole(false);
         }
     }
 

@@ -2,6 +2,7 @@ package com.dynamicvillagers.villager.role;
 
 import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.village.VillageAnchor;
+import com.dynamicvillagers.village.VillageManager;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.task.CraftTask;
 import com.dynamicvillagers.villager.task.TakeItemsTask;
@@ -135,7 +136,7 @@ public final class Crafting {
             if (ingredient.isEmpty()) {
                 continue;
             }
-            Item rep = representative(ingredient);
+            Item rep = representative(level, villager, essence, ingredient);
             if (rep == null) {
                 return fetchFromNetwork(level, villager, essence, item, count)
                         ? Provision.ENQUEUED : Provision.UNAVAILABLE; // an ingredient with no obtainable item
@@ -169,10 +170,12 @@ public final class Crafting {
     /** Enqueues a fetch if the storage network is known to hold the item; else false. */
     private static boolean fetchFromNetwork(ServerLevel level, Villager villager,
                                             VillagerEssence essence, Item item, int count) {
-        if (essence.getMemory().knownContainers().isEmpty()) {
+        StorageLedger ledger = StorageLedger.get(level);
+        if (essence.getMemory().knownContainers().isEmpty()
+                && (VillageManager.get(level).villageFor(villager.getUUID()) == null
+                || !ledger.hasPublicDeposit(VillageAnchor.resolve(level, villager), villager.getUUID()))) {
             return false;
         }
-        StorageLedger ledger = StorageLedger.get(level);
         if (ledger.findSource(VillageAnchor.resolve(level, villager), villager.blockPosition(),
                 villager.getUUID(), stack -> stack.is(item), level.getGameTime(), Set.of()) == null) {
             return false;
@@ -196,8 +199,16 @@ public final class Crafting {
     }
 
     @Nullable
-    private static Item representative(Ingredient ingredient) {
+    private static Item representative(ServerLevel level, Villager villager,
+                                       VillagerEssence essence, Ingredient ingredient) {
         ItemStack[] items = ingredient.getItems();
+        for (ItemStack option : items) {
+            for (RecipeHolder<CraftingRecipe> recipe : recipesFor(level, option.getItem())) {
+                if (selectIngredients(villager, essence, recipe.value()) != null) {
+                    return option.getItem();
+                }
+            }
+        }
         return items.length > 0 ? items[0].getItem() : null;
     }
 

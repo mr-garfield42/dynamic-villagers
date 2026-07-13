@@ -2,6 +2,8 @@ package com.dynamicvillagers.villager.task;
 
 import com.dynamicvillagers.villager.work.BreakBlockOrder;
 import com.dynamicvillagers.villager.work.WorkHelper;
+import com.dynamicvillagers.villager.VillagerEssence;
+import com.dynamicvillagers.villager.role.LumberjackPlanner;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -9,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
@@ -24,6 +27,8 @@ public class ChopTreeTask implements Task {
     public static final String TYPE = "chop_tree";
     private static final int GIVE_UP_TICKS = 2400;
     private static final int STUCK_TICKS_BEFORE_DESCEND = 60;
+    private static final int APPROACH_RETRY_TICKS = 40;
+    private static final int MAX_APPROACH_ATTEMPTS = 4;
 
     private final ArrayDeque<BlockPos> logs;
     @Nullable
@@ -31,7 +36,16 @@ public class ChopTreeTask implements Task {
     @Nullable
     private BreakBlockOrder descendOrder;
     private int ticksRun;
-    private int stuckTicks;
+    private int canopyStuckTicks;
+    private int approachRetryTicks;
+    private int approachAttempts;
+    private int approachStuckTicks;
+    @Nullable
+    private BlockPos approach;
+    @Nullable
+    private BlockPos approachTarget;
+    @Nullable
+    private Vec3 lastApproachPosition;
 
     public ChopTreeTask(List<BlockPos> logs) {
         this.logs = logs.stream()
@@ -59,11 +73,21 @@ public class ChopTreeTask implements Task {
             return Status.DONE;
         }
         BlockPos target = logs.peek();
-        if (!WorkHelper.moveIntoReachAndLook(villager, target)) {
+        if (villager.getEyePosition().distanceToSqr(Vec3.atCenterOf(target))
+                > WorkHelper.REACH * WorkHelper.REACH) {
+            updateApproach(level, villager, target);
+            WorkHelper.moveIntoReachAndLook(villager, target,
+                    approach != null ? approach : target, approach != null ? 0 : 2);
             descendIfStuckOnCanopy(level, villager, target);
+            if (approach == null && approachAttempts >= MAX_APPROACH_ATTEMPTS) {
+                VillagerEssence.get(villager).getMemory().forgetSpot(LumberjackPlanner.TREE_SPOT, target);
+                abortOrder(level, villager);
+                return Status.FAILED;
+            }
             return Status.IN_PROGRESS;
         }
-        stuckTicks = 0;
+        canopyStuckTicks = 0;
+        resetApproach();
         if (descendOrder != null) {
             descendOrder.abort(level, villager);
             descendOrder = null;
@@ -85,7 +109,7 @@ public class ChopTreeTask implements Task {
      * villager standing on a hill keeps walking instead of excavating it.
      */
     private void descendIfStuckOnCanopy(ServerLevel level, Villager villager, BlockPos target) {
-        if (++stuckTicks < STUCK_TICKS_BEFORE_DESCEND || villager.getY() <= target.getY() + 1) {
+        if (++canopyStuckTicks < STUCK_TICKS_BEFORE_DESCEND || villager.getY() <= target.getY() + 1) {
             return;
         }
         BlockPos below = villager.blockPosition().below();
@@ -99,6 +123,37 @@ public class ChopTreeTask implements Task {
         if (descendOrder.tick(level, villager)) {
             descendOrder = null;
         }
+    }
+
+    private void updateApproach(ServerLevel level, Villager villager, BlockPos target) {
+        if (!target.equals(approachTarget)) {
+            resetApproach();
+            approachTarget = target;
+        }
+        if (lastApproachPosition != null && villager.position().distanceToSqr(lastApproachPosition) < 0.01) {
+            approachStuckTicks++;
+        } else {
+            approachStuckTicks = 0;
+        }
+        lastApproachPosition = villager.position();
+        if (approachStuckTicks >= STUCK_TICKS_BEFORE_DESCEND) {
+            approach = null;
+            approachRetryTicks = 0;
+            approachStuckTicks = 0;
+        }
+        if (approach == null && approachRetryTicks-- <= 0) {
+            approach = WorkHelper.findReachableWorkPosition(level, villager, target, approachAttempts++);
+            approachRetryTicks = APPROACH_RETRY_TICKS;
+        }
+    }
+
+    private void resetApproach() {
+        approach = null;
+        approachTarget = null;
+        lastApproachPosition = null;
+        approachRetryTicks = 0;
+        approachAttempts = 0;
+        approachStuckTicks = 0;
     }
 
     @Override

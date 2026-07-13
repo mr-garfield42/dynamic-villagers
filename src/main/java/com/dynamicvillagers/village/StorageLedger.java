@@ -86,6 +86,7 @@ public class StorageLedger extends SavedData {
         private Designation designation = Designation.UNCLAIMED;
         @Nullable
         private UUID owner;
+        private int villageId = -1;
         private final List<Reservation> reservations = new ArrayList<>();
 
         public List<ItemStack> contents() {
@@ -107,6 +108,14 @@ public class StorageLedger extends SavedData {
 
         public List<Reservation> reservations() {
             return Collections.unmodifiableList(reservations);
+        }
+
+        public int freeSlots() {
+            return freeSlots;
+        }
+
+        public int villageId() {
+            return villageId;
         }
 
         public int count(Predicate<ItemStack> predicate) {
@@ -236,10 +245,31 @@ public class StorageLedger extends SavedData {
     }
 
     public void setDesignation(BlockPos pos, Designation designation, @Nullable UUID owner) {
+        setDesignation(pos, designation, owner, -1);
+    }
+
+    public void setDesignation(BlockPos pos, Designation designation, @Nullable UUID owner, int villageId) {
         ContainerRecord record = records.computeIfAbsent(pos.immutable(), p -> new ContainerRecord());
         record.designation = designation;
         record.owner = designation == Designation.PRIVATE ? owner : null;
+        if (villageId != -1) {
+            record.villageId = villageId;
+        }
         setDirty();
+    }
+
+    public void setVillageId(BlockPos pos, int villageId) {
+        ContainerRecord record = records.get(pos);
+        if (record != null && record.villageId != villageId) {
+            record.villageId = villageId;
+            setDirty();
+        }
+    }
+
+    public void removeVillageRecords(int villageId) {
+        if (records.entrySet().removeIf(entry -> entry.getValue().villageId == villageId)) {
+            setDirty();
+        }
     }
 
     /** Private containers open only for their owner; everything else is fair game. */
@@ -447,6 +477,7 @@ public class StorageLedger extends SavedData {
             recordTag.putLong("pos", entry.getKey().asLong());
             recordTag.putLong("inspected", record.lastInspected);
             recordTag.putInt("free_slots", record.freeSlots);
+            recordTag.putInt("village", record.villageId);
             recordTag.putString("designation", record.designation.name());
             if (record.owner != null) {
                 recordTag.putUUID("owner", record.owner);
@@ -499,6 +530,7 @@ public class StorageLedger extends SavedData {
             ContainerRecord record = new ContainerRecord();
             record.lastInspected = recordTag.getLong("inspected");
             record.freeSlots = recordTag.getInt("free_slots");
+            record.villageId = recordTag.contains("village") ? recordTag.getInt("village") : -1;
             Designation designation = Designation.byName(recordTag.getString("designation"));
             record.designation = designation != null ? designation : Designation.UNCLAIMED;
             record.owner = recordTag.hasUUID("owner") ? recordTag.getUUID("owner") : null;

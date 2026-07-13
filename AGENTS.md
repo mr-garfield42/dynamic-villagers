@@ -747,8 +747,23 @@ Captured for later planning — do not start implementing until a phase plan pic
   safely, survives brain rebuilds, composes with GV/VO/Thief.
 - Architecture decision (Phase 1): enhance vanilla `minecraft:villager` (no custom entity);
   per-villager state in one codec-serialized NeoForge data attachment; village-level state in
-  `SavedData`. See docs/PHASE1_PLAN.md, docs/PHASE2_PLAN.md, docs/PHASE3_PLAN.md (all
-  complete) and docs/PHASE4_PLAN.md (current).
+  `SavedData`. See docs/PHASE1_PLAN.md, docs/PHASE2_PLAN.md, docs/PHASE3_PLAN.md,
+  docs/PHASE4_PLAN.md (all complete) and docs/PHASE5_PLAN.md (Population — implementation in
+  progress; persistent `VillageManager`, membership/names, bed gating, auto-storage, autonomous
+  building/staffing, and the bell inspector landed 2026-07-13).
+- **Workers socialize only while idle** (owner request, implemented 2026-07-13). Vanilla's
+  `MEET`/`IDLE` social behaviors can run alongside DV's CORE task behaviors, so
+  `WorkFocusBehavior` clears villager-follow/interaction/breeding targets only while the DV task
+  queue is non-empty. Block/item work targets are preserved; an empty queue remains pure vanilla.
+- **Initial village workforce bootstrap** (owner request, implemented 2026-07-13). Naturally
+  generated villages are topped up once to 25 villagers (never replacing later deaths). At that
+  size auto-staff targets five lumberjacks and two miners. The lead lumberjack crafts/places public
+  storage near the bell; tree-less lumberjacks explore directionally and remember tree locations.
+  Workers craft vanilla wooden tools from real inputs; miners use assigned starter quarries for
+  stone, upgrade to stone pickaxes, then harvest visible iron. Guard Villagers guards receive the
+  same generated names and are counted in the bell inspector. Farmers return to claimed composters
+  to tend their fields, unemployed villagers spread across homes, and public storage avoids roofs.
+  All 129 GameTests passed twice after a clean build.
 
 ## Dev environment (this machine)
 - JDK 21 is portable at `%USERPROFILE%\.jdks\jdk-21.0.11+10` (not on PATH). Before Gradle:

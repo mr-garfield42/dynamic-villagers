@@ -27,6 +27,7 @@ public final class TaskTypes {
         register(KillAnimalTask.TYPE, KillAnimalTask::load);
         register(CookAtCampfireTask.TYPE, CookAtCampfireTask::load);
         register(CraftTask.TYPE, CraftTask::load);
+        register(ExploreForTreesTask.TYPE, ExploreForTreesTask::load);
     }
 
     public static void register(String typeId, BiFunction<CompoundTag, HolderLookup.Provider, Task> loader) {

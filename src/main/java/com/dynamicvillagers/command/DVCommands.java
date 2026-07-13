@@ -6,6 +6,8 @@ import com.dynamicvillagers.construction.SiteValidator;
 import com.dynamicvillagers.registry.DVTags;
 import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.village.StorageLedger;
+import com.dynamicvillagers.village.Village;
+import com.dynamicvillagers.village.VillageManager;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.role.VillagerRole;
 import com.dynamicvillagers.villager.task.BreakBlockTask;
@@ -179,7 +181,64 @@ public final class DVCommands {
                                 .executes(DVCommands::listTasks)))
                 .then(Commands.literal("cleartasks")
                         .then(Commands.argument("target", EntityArgument.entity())
-                                .executes(DVCommands::clearTasks))));
+                                .executes(DVCommands::clearTasks)))
+                .then(Commands.literal("village")
+                        .then(Commands.literal("list").executes(DVCommands::listVillages))
+                        .then(Commands.literal("info")
+                                .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                                        .executes(DVCommands::villageInfo)))
+                        .then(Commands.literal("autostaff")
+                                .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                                        .then(Commands.literal("on")
+                                                .executes(ctx -> setAutoStaff(ctx, true)))
+                                        .then(Commands.literal("off")
+                                                .executes(ctx -> setAutoStaff(ctx, false)))))));
+    }
+
+    private static int listVillages(CommandContext<CommandSourceStack> ctx) {
+        VillageManager manager = VillageManager.get(ctx.getSource().getLevel());
+        if (manager.all().isEmpty()) {
+            ctx.getSource().sendSuccess(() -> Component.literal("no managed villages"), false);
+            return 0;
+        }
+        for (Village village : manager.all()) {
+            manager.refreshTallies(ctx.getSource().getLevel(), village);
+            ctx.getSource().sendSuccess(() -> Component.literal(
+                    "#%d %s at %s — %d villagers, %d/%d beds free".formatted(
+                            village.id(), village.name(), village.center().toShortString(),
+                            village.population(), village.freeBeds(), village.beds())), false);
+        }
+        return manager.all().size();
+    }
+
+    private static int villageInfo(CommandContext<CommandSourceStack> ctx) {
+        VillageManager manager = VillageManager.get(ctx.getSource().getLevel());
+        Village village = manager.getVillage(IntegerArgumentType.getInteger(ctx, "id"));
+        if (village == null) {
+            ctx.getSource().sendFailure(Component.literal("no such village"));
+            return 0;
+        }
+        manager.refreshTallies(ctx.getSource().getLevel(), village);
+        ctx.getSource().sendSuccess(() -> Component.literal(
+                "#%d %s | center %s | radius %d | population %d (%d adults, %d children) | guards %d | beds %d (%d free) | houses %d | open sites %d | autostaff %s | roles %s"
+                        .formatted(village.id(), village.name(), village.center().toShortString(), village.radius(),
+                                village.population(), village.adults(), village.children(), village.guards(), village.beds(),
+                                village.freeBeds(), village.houses(), village.openSites(), village.autoStaff(),
+                                village.roles())), false);
+        return 1;
+    }
+
+    private static int setAutoStaff(CommandContext<CommandSourceStack> ctx, boolean enabled) {
+        VillageManager manager = VillageManager.get(ctx.getSource().getLevel());
+        Village village = manager.getVillage(IntegerArgumentType.getInteger(ctx, "id"));
+        if (village == null) {
+            ctx.getSource().sendFailure(Component.literal("no such village"));
+            return 0;
+        }
+        manager.setAutoStaff(village, enabled);
+        ctx.getSource().sendSuccess(() -> Component.literal(
+                village.name() + " autostaff " + (enabled ? "enabled" : "disabled")), false);
+        return 1;
     }
 
     private static int enqueue(CommandContext<CommandSourceStack> ctx, Task task) throws CommandSyntaxException {
@@ -263,6 +322,7 @@ public final class DVCommands {
             return 0;
         }
         VillagerEssence.get(villager).setRole(role);
+        VillagerEssence.get(villager).setManagerManagedRole(false);
         ctx.getSource().sendSuccess(() -> Component.literal("role set to " + role.lowerName()), false);
         return 1;
     }
@@ -571,6 +631,7 @@ public final class DVCommands {
         }
         VillagerEssence essence = VillagerEssence.get(villager);
         essence.setRole(VillagerRole.BUILDER);
+        essence.setManagerManagedRole(false);
         essence.setAssignedPathId(-1); // a building assignment replaces any path assignment
         essence.setAssignedSiteId(id);
         ctx.getSource().sendSuccess(() -> Component.literal(
@@ -590,6 +651,7 @@ public final class DVCommands {
                 .addPath(java.util.List.of(from, to), level.getGameTime());
         VillagerEssence essence = VillagerEssence.get(villager);
         essence.setRole(VillagerRole.BUILDER);
+        essence.setManagerManagedRole(false);
         essence.setAssignedSiteId(-1);
         essence.setAssignedPathId(path.id());
         ctx.getSource().sendSuccess(() -> Component.literal(

@@ -1,9 +1,11 @@
 package com.dynamicvillagers.network;
 
 import com.dynamicvillagers.villager.VillagerEssence;
+import com.dynamicvillagers.villager.behavior.PlanWorkBehavior;
 import com.dynamicvillagers.villager.role.VillagerRole;
 import com.dynamicvillagers.villager.task.DepositToContainerTask;
 import com.dynamicvillagers.villager.task.PickUpItemsTask;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.npc.Villager;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -21,6 +23,8 @@ public final class DVNetwork {
         // resolved when the handler actually runs (never on a dedicated server).
         registrar.playToClient(VillagerDebugStatePayload.TYPE, VillagerDebugStatePayload.STREAM_CODEC,
                 (payload, context) -> com.dynamicvillagers.client.VillagerDebugClient.handleState(payload));
+        registrar.playToClient(VillageDebugStatePayload.TYPE, VillageDebugStatePayload.STREAM_CODEC,
+                (payload, context) -> com.dynamicvillagers.client.VillageDebugClient.handleState(payload));
         registrar.playToServer(VillagerDebugRequestPayload.TYPE, VillagerDebugRequestPayload.STREAM_CODEC,
                 DVNetwork::handleRequest);
         registrar.playToServer(VillagerDebugActionPayload.TYPE, VillagerDebugActionPayload.STREAM_CODEC,
@@ -46,13 +50,17 @@ public final class DVNetwork {
                 VillagerRole role = VillagerRole.byName(payload.arg());
                 if (role != null) {
                     essence.setRole(role);
+                    essence.setManagerManagedRole(false);
                 }
             }
             case "clear_tasks" -> essence.getTaskQueue().clear();
             case "deposit" -> essence.getTaskQueue().enqueue(new DepositToContainerTask());
             case "pickup" -> essence.getTaskQueue().enqueue(
                     new PickUpItemsTask(villager.blockPosition(), 8.0));
-            case "replan" -> essence.setNextPlanTime(0);
+            case "replan" -> {
+                essence.setNextPlanTime(0);
+                PlanWorkBehavior.tryPlan((ServerLevel) villager.level(), villager, true);
+            }
             case "hunger" -> {
                 try {
                     essence.addHunger(Integer.parseInt(payload.arg()));

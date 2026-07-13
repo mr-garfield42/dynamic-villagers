@@ -1,0 +1,22 @@
+[
+  { "template": "minecraft:village/plains/houses/plains_small_house_1", "type": "house", "biome": "plains" },
+  { "template": "minecraft:village/plains/houses/plains_small_house_5", "type": "house", "biome": "plains" },
+  { "template": "minecraft:village/plains/houses/plains_small_farm_1", "type": "farm", "biome": "plains" },
+  { "template": "minecraft:village/plains/houses/plains_weaponsmith_1", "type": "warehouse", "biome": "plains" },
+  { "template": "minecraft:village/desert/houses/desert_small_house_1", "type": "house", "biome": "desert" },
+  { "template": "minecraft:village/desert/houses/desert_small_house_3", "type": "house", "biome": "desert" },
+  { "template": "minecraft:village/desert/houses/desert_farm_1", "type": "farm", "biome": "desert" },
+  { "template": "minecraft:village/desert/houses/desert_weaponsmith_1", "type": "warehouse", "biome": "desert" },
+  { "template": "minecraft:village/savanna/houses/savanna_small_house_1", "type": "house", "biome": "savanna" },
+  { "template": "minecraft:village/savanna/houses/savanna_small_house_3", "type": "house", "biome": "savanna" },
+  { "template": "minecraft:village/savanna/houses/savanna_small_farm", "type": "farm", "biome": "savanna" },
+  { "template": "minecraft:village/savanna/houses/savanna_weaponsmith_1", "type": "warehouse", "biome": "savanna" },
+  { "template": "minecraft:village/taiga/houses/taiga_small_house_1", "type": "house", "biome": "taiga" },
+  { "template": "minecraft:village/taiga/houses/taiga_small_house_3", "type": "house", "biome": "taiga" },
+  { "template": "minecraft:village/taiga/houses/taiga_small_farm_1", "type": "farm", "biome": "taiga" },
+  { "template": "minecraft:village/taiga/houses/taiga_weaponsmith_1", "type": "warehouse", "biome": "taiga" },
+  { "template": "minecraft:village/snowy/houses/snowy_small_house_1", "type": "house", "biome": "snowy" },
+  { "template": "minecraft:village/snowy/houses/snowy_small_house_3", "type": "house", "biome": "snowy" },
+  { "template": "minecraft:village/snowy/houses/snowy_farm_1", "type": "farm", "biome": "snowy" },
+  { "template": "minecraft:village/snowy/houses/snowy_weapon_smith_1", "type": "warehouse", "biome": "snowy" }
+]

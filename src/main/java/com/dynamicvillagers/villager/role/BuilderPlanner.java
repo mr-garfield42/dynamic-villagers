@@ -548,15 +548,17 @@ public class BuilderPlanner implements RolePlanner {
                 break;
             }
         }
-        if (!needsTool || essence.getMemory().knownContainers().isEmpty()) {
-            return false; // nothing to break by tool, or no chest to look in — hands/scaffold
+        if (!needsTool) {
+            return false;
         }
-        // go look in a remembered chest (the personal-memory path, like the miner's tool
-        // fetch — the shared ledger only knows a container's contents after a villager has
-        // opened it). A wasted trip when no pickaxe turns up is the "look first" behavior.
-        essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
-        essence.getTaskQueue().enqueue(new TakeItemsTask("pickaxe", 1));
-        return true;
+        if (!essence.getMemory().knownContainers().isEmpty()) {
+            essence.setNextToolFetchTime(now + FETCH_COOLDOWN);
+            essence.getTaskQueue().enqueue(new TakeItemsTask("pickaxe", 1));
+            return true;
+        }
+        return WorkerTools.planWoodenTool(level, villager, essence, Items.WOODEN_PICKAXE, "pickaxe")
+                || WorkerTools.planStoneUpgrade(level, villager, essence,
+                Items.WOODEN_PICKAXE, Items.STONE_PICKAXE);
     }
 
     /** Withdraws every request this site posted — also used by /dv build cancel. */

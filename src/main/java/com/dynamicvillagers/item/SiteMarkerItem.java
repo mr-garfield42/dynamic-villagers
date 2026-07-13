@@ -53,6 +53,7 @@ public abstract class SiteMarkerItem extends Item {
         VillagerEssence essence = VillagerEssence.get(villager);
         if (essence.getRole() != VillagerRole.MINER) {
             essence.setRole(VillagerRole.MINER);
+            essence.setManagerManagedRole(false);
         }
     }
 }

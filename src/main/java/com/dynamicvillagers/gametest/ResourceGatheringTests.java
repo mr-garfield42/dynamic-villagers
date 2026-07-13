@@ -13,12 +13,14 @@ import com.dynamicvillagers.villager.task.TakeItemsTask;
 import com.dynamicvillagers.villager.work.ItemFilter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
@@ -28,6 +30,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -271,6 +274,52 @@ public class ResourceGatheringTests {
         });
     }
 
+    @GameTest(template = "empty5x5", timeoutTicks = 600, batch = "dvFarmerHarvest")
+    public static void newly_assigned_farmer_harvests_and_replants_mature_crop(GameTestHelper helper) {
+        helper.getLevel().setDayTime(1000);
+        BlockPos farmland = new BlockPos(1, 2, 1);
+        BlockPos wheat = farmland.above();
+        helper.setBlock(farmland, Blocks.FARMLAND);
+        helper.setBlock(wheat, ((CropBlock) Blocks.WHEAT).getStateForAge(7));
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(3, 2, 2));
+        VillagerEssence.get(villager).setRole(VillagerRole.FARMER);
+        long start = helper.getLevel().getGameTime();
+        helper.succeedWhen(() -> {
+            helper.assertBlockPresent(Blocks.WHEAT, wheat);
+            helper.assertTrue(!((CropBlock) Blocks.WHEAT).isMaxAge(helper.getBlockState(wheat)),
+                    "the harvested field should be replanted with a young crop");
+            helper.assertTrue(carriedCount(villager, Items.WHEAT) > 0,
+                    "the farmer should physically collect the harvested wheat");
+            helper.assertTrue(helper.getLevel().getGameTime() - start <= 300,
+                    "a nearby mature crop should be handled within fifteen seconds");
+        });
+    }
+
+    @GameTest(template = "empty11x11", timeoutTicks = 600, batch = "dvFarmerReturns")
+    public static void farmer_returns_to_claimed_field_and_harvests(GameTestHelper helper) {
+        helper.getLevel().setDayTime(1000);
+        BlockPos jobSite = new BlockPos(10, 2, 5);
+        BlockPos farmland = new BlockPos(10, 2, 6);
+        BlockPos wheat = farmland.above();
+        helper.setBlock(jobSite, Blocks.COMPOSTER);
+        helper.setBlock(farmland, Blocks.FARMLAND);
+        helper.setBlock(wheat, ((CropBlock) Blocks.WHEAT).getStateForAge(7));
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 5));
+        VillagerEssence.get(villager).setRole(VillagerRole.FARMER);
+        villager.getBrain().setMemory(MemoryModuleType.JOB_SITE,
+                GlobalPos.of(helper.getLevel().dimension(), helper.absolutePos(jobSite)));
+        long start = helper.getLevel().getGameTime();
+        helper.succeedWhen(() -> {
+            helper.assertBlockPresent(Blocks.WHEAT, wheat);
+            helper.assertTrue(!((CropBlock) Blocks.WHEAT).isMaxAge(helper.getBlockState(wheat)),
+                    "the farmer should return to its claimed field, harvest, and replant");
+            helper.assertTrue(carriedCount(villager, Items.WHEAT) > 0,
+                    "harvested wheat should be physically collected");
+            helper.assertTrue(helper.getLevel().getGameTime() - start <= 400,
+                    "returning to a nearby claimed field should take less than twenty seconds");
+        });
+    }
+
     @GameTest(template = "empty5x5", timeoutTicks = 600, batch = "dvFarmerTill")
     public static void farmer_tills_dirt_at_farm_edge_with_hoe(GameTestHelper helper) {
         helper.getLevel().setDayTime(1000);
@@ -327,6 +376,9 @@ public class ResourceGatheringTests {
     @GameTest(template = "empty5x5", timeoutTicks = 600, batch = "dvMinerFear")
     public static void torchless_miner_fears_dark_ore_site(GameTestHelper helper) {
         helper.getLevel().setDayTime(1000);
+        for (int x = 0; x <= 4; x++) for (int z = 0; z <= 4; z++) {
+            helper.setBlock(new BlockPos(x, 4, z), Blocks.STONE);
+        }
         // far corner: away from the harness's status beacon (a corner light source), so the
         // site is genuinely below the safe block-light threshold
         BlockPos ore = new BlockPos(3, 2, 3);
@@ -344,6 +396,9 @@ public class ResourceGatheringTests {
     @GameTest(template = "empty5x5", timeoutTicks = 800, batch = "dvMinerTorch")
     public static void miner_with_torches_lights_dark_site_and_mines(GameTestHelper helper) {
         helper.getLevel().setDayTime(1000);
+        for (int x = 0; x <= 4; x++) for (int z = 0; z <= 4; z++) {
+            helper.setBlock(new BlockPos(x, 4, z), Blocks.STONE);
+        }
         BlockPos ore = new BlockPos(3, 2, 3); // far corner: dark (see fear test)
         helper.setBlock(ore, Blocks.IRON_ORE);
         Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 2));
@@ -363,6 +418,9 @@ public class ResourceGatheringTests {
     @GameTest(template = "empty5x5", timeoutTicks = 1200, batch = "dvMinerTunnel")
     public static void miner_digs_designated_strip_tunnel(GameTestHelper helper) {
         helper.getLevel().setDayTime(1000);
+        for (int x = 0; x <= 4; x++) for (int z = 0; z <= 4; z++) {
+            helper.setBlock(new BlockPos(x, 4, z), Blocks.STONE);
+        }
         // a 1×2 rock face two segments deep, heading north (-z)
         List<BlockPos> rock = List.of(new BlockPos(1, 2, 1), new BlockPos(1, 3, 1),
                 new BlockPos(1, 2, 0), new BlockPos(1, 3, 0));
@@ -474,6 +532,30 @@ public class ResourceGatheringTests {
         essence.getExtraInventory().setItem(0, new ItemStack(Items.IRON_AXE));
         essence.getTaskQueue().enqueue(new ChopTreeTask(List.of(helper.absolutePos(log))));
         helper.succeedWhen(() -> helper.assertBlockNotPresent(Blocks.OAK_LOG, log));
+    }
+
+    @GameTest(template = "empty11x11", timeoutTicks = 800, batch = "dvTreeReroute")
+    public static void chopper_routes_around_trench_to_reachable_side_of_tree(GameTestHelper helper) {
+        helper.getLevel().setDayTime(1000);
+        for (int z = 0; z <= 8; z++) {
+            helper.setBlock(new BlockPos(5, 1, z), Blocks.AIR);
+        }
+        BlockPos lower = new BlockPos(8, 2, 5);
+        BlockPos upper = lower.above();
+        helper.setBlock(lower, Blocks.OAK_LOG);
+        helper.setBlock(upper, Blocks.OAK_LOG);
+        Villager villager = helper.spawn(EntityType.VILLAGER, new BlockPos(2, 2, 5));
+        VillagerEssence essence = VillagerEssence.get(villager);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.IRON_AXE));
+        essence.getTaskQueue().enqueue(new ChopTreeTask(List.of(
+                helper.absolutePos(lower), helper.absolutePos(upper))));
+        long start = helper.getLevel().getGameTime();
+        helper.succeedWhen(() -> {
+            helper.assertBlockNotPresent(Blocks.OAK_LOG, lower);
+            helper.assertBlockNotPresent(Blocks.OAK_LOG, upper);
+            helper.assertTrue(helper.getLevel().getGameTime() - start <= 600,
+                    "the lumberjack should reroute around the trench within thirty seconds");
+        });
     }
 
     @GameTest(template = "empty5x5", timeoutTicks = 600, batch = "dvDeposit")

@@ -92,6 +92,13 @@ public class HunterPlanner implements RolePlanner {
         Animal animal = findHuntable(level, villager);
         if (animal != null) {
             long now = level.getGameTime();
+            if (WorkerTools.planWoodenTool(level, villager, essence, Items.WOODEN_SWORD, "sword")) {
+                return true;
+            }
+            if (WorkerTools.planStoneUpgrade(level, villager, essence,
+                    Items.WOODEN_SWORD, Items.STONE_SWORD)) {
+                return true;
+            }
             if (!essence.hasItem(villager, ItemFilter.parse("sword"))
                     && !essence.getMemory().knownContainers().isEmpty()
                     && now >= essence.getNextToolFetchTime()

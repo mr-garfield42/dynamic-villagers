@@ -87,6 +87,7 @@ public class PathMarkerItem extends SiteMarkerItem {
         VillagerEssence essence = VillagerEssence.get(villager);
         if (essence.getRole() != VillagerRole.BUILDER) {
             essence.setRole(VillagerRole.BUILDER);
+            essence.setManagerManagedRole(false);
         }
         essence.setAssignedSiteId(-1); // a path replaces any building assignment
         essence.setAssignedPathId(path.id());
