@@ -14,8 +14,6 @@ import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.level.block.Blocks;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Crafts up to {@code count} of a target item from carried materials. Recipes that fit a 2×2
@@ -27,7 +25,6 @@ import org.jetbrains.annotations.Nullable;
 public class CraftTask implements Task {
     public static final String TYPE = "craft";
     private static final int GIVE_UP_TICKS = 400;
-    private static final int TABLE_SCAN = 8;
     private static final int MAX_CRAFTS_PER_TICK = 64; // crafting is instant once at the bench
 
     private final Item target;
@@ -64,7 +61,7 @@ public class CraftTask implements Task {
             if (!allowTable) {
                 return craftedAnything ? Status.DONE : Status.FAILED;
             }
-            BlockPos table = findTable(level, villager);
+            BlockPos table = Crafting.findTable(level, villager);
             if (table == null) {
                 return craftedAnything ? Status.DONE : Status.FAILED;
             }
@@ -89,26 +86,6 @@ public class CraftTask implements Task {
             return Status.DONE;
         }
         return craftedAnything ? Status.DONE : Status.FAILED;
-    }
-
-    /** Nearest crafting table within reach-scan of the villager, or null. */
-    @Nullable
-    private static BlockPos findTable(ServerLevel level, Villager villager) {
-        BlockPos origin = villager.blockPosition();
-        BlockPos best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (BlockPos pos : BlockPos.betweenClosed(
-                origin.offset(-TABLE_SCAN, -TABLE_SCAN, -TABLE_SCAN),
-                origin.offset(TABLE_SCAN, TABLE_SCAN, TABLE_SCAN))) {
-            if (level.getBlockState(pos).is(Blocks.CRAFTING_TABLE)) {
-                double dist = pos.distSqr(origin);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    best = pos.immutable();
-                }
-            }
-        }
-        return best;
     }
 
     @Override

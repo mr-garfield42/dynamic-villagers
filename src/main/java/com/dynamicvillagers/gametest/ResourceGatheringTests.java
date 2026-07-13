@@ -295,6 +295,36 @@ public class ResourceGatheringTests {
         });
     }
 
+    @GameTest(template = "empty11x11", timeoutTicks = 900, batch = "dvFarmerFullReplant")
+    public static void farmer_replants_every_crop_in_a_spread_out_harvest(GameTestHelper helper) {
+        helper.getLevel().setDayTime(1000);
+        BlockPos jobSite = new BlockPos(5, 2, 5);
+        helper.setBlock(jobSite, Blocks.COMPOSTER);
+        List<BlockPos> crops = List.of(
+                new BlockPos(2, 3, 2), new BlockPos(8, 3, 2),
+                new BlockPos(2, 3, 8), new BlockPos(8, 3, 8));
+        List<CropBlock> types = List.of(
+                (CropBlock) Blocks.WHEAT, (CropBlock) Blocks.CARROTS,
+                (CropBlock) Blocks.POTATOES, (CropBlock) Blocks.BEETROOTS);
+        for (int i = 0; i < crops.size(); i++) {
+            helper.setBlock(crops.get(i).below(), Blocks.FARMLAND);
+            helper.setBlock(crops.get(i), types.get(i).getStateForAge(types.get(i).getMaxAge()));
+        }
+        Villager farmer = helper.spawn(EntityType.VILLAGER, new BlockPos(5, 2, 7));
+        VillagerEssence.get(farmer).setRole(VillagerRole.FARMER);
+        farmer.getBrain().setMemory(MemoryModuleType.JOB_SITE,
+                GlobalPos.of(helper.getLevel().dimension(), helper.absolutePos(jobSite)));
+
+        helper.succeedWhen(() -> {
+            for (int i = 0; i < crops.size(); i++) {
+                helper.assertTrue(helper.getBlockState(crops.get(i)).is(types.get(i)),
+                        "every harvested plot should retain its crop type");
+                helper.assertTrue(!types.get(i).isMaxAge(helper.getBlockState(crops.get(i))),
+                        "every harvested plot should be replanted, including distant plots");
+            }
+        });
+    }
+
     @GameTest(template = "empty11x11", timeoutTicks = 600, batch = "dvFarmerReturns")
     public static void farmer_returns_to_claimed_field_and_harvests(GameTestHelper helper) {
         helper.getLevel().setDayTime(1000);

@@ -1,12 +1,14 @@
 package com.dynamicvillagers.villager.role;
 
 import com.dynamicvillagers.village.StorageLedger;
-import com.dynamicvillagers.village.VillageAnchor;
+import com.dynamicvillagers.village.Village;
 import com.dynamicvillagers.village.VillageManager;
+import com.dynamicvillagers.village.VillageAnchor;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.task.CraftTask;
 import com.dynamicvillagers.villager.task.TakeItemsTask;
 import com.dynamicvillagers.villager.work.ContainerUtil;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.SimpleContainer;
@@ -19,6 +21,7 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.ShapedRecipe;
 import net.minecraft.world.item.crafting.ShapelessRecipe;
+import net.minecraft.world.level.block.Blocks;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
@@ -42,6 +45,7 @@ import java.util.Set;
 public final class Crafting {
     private static final int FETCH_CAP = 64;
     private static final int MAX_CHAIN_DEPTH = 4; // logs → planks → sticks → … is plenty
+    public static final int SHARED_TABLE_RANGE = 32;
 
     /** Outcome of trying to make an item available for a planner. */
     public enum Provision {
@@ -107,6 +111,28 @@ public final class Crafting {
             villager.spawnAtLocation(remainder); // canHold said it fits; belt-and-braces against loss
         }
         return true;
+    }
+
+    @Nullable
+    public static BlockPos findTable(ServerLevel level, Villager villager) {
+        BlockPos origin = villager.blockPosition();
+        BlockPos local = nearestTable(level, origin, origin, 8, 8);
+        if (local != null) return local;
+        Village village = VillageManager.get(level).villageFor(villager.getUUID());
+        if (village == null) return null;
+        return nearestTable(level, origin, WorkerTools.stationAnchor(village, origin), 4, 4);
+    }
+
+    @Nullable
+    private static BlockPos nearestTable(ServerLevel level, BlockPos origin, BlockPos center,
+                                         int horizontalRange, int verticalRange) {
+        return BlockPos.betweenClosedStream(
+                        center.offset(-horizontalRange, -verticalRange, -horizontalRange),
+                        center.offset(horizontalRange, verticalRange, horizontalRange))
+                .filter(pos -> level.getBlockState(pos).is(Blocks.CRAFTING_TABLE))
+                .map(BlockPos::immutable)
+                .min(java.util.Comparator.comparingDouble(pos -> pos.distSqr(origin)))
+                .orElse(null);
     }
 
     /**

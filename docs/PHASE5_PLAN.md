@@ -19,8 +19,10 @@ idle-only socializing while a worker has queued tasks. Natural villages receive 
   population of 25, with five lumberjacks and two miners at that size; workers bootstrap wooden
   tools, the lead lumberjack builds public storage, tree searches persist locations, and guards are
   named and counted in the inspector. Farmers return to claimed composters, unemployed villagers
-  distribute across homes, and storage placement rejects inaccessible roofs. The full suite contains
-  129 passing GameTests. Remaining
+  distribute across homes, and storage placement rejects inaccessible roofs. Farmers collect and
+  replant each harvested plot before moving on, crafting tables are shared village stations,
+  lumberjacks share discovered groves, and full public storage is expanded. The full suite contains
+  134 passing GameTests. Remaining
 before the phase gate: broaden the two-village/persistence matrix, add direct
 FARM/WAREHOUSE decision tests and the complete breed → house → build → breed end-to-end scenario,
 then record the many-village performance benchmark and manual inspector playtest.
@@ -49,10 +51,15 @@ then record the many-village performance benchmark and manual inspector playtest
 - At 25 adults the manager targets five lumberjacks and two miners. New miners receive a starter
   quarry outside the center so wooden pickaxes obtain stone without excavating village terrain.
 - Worker bootstrapping uses vanilla recipes: lumberjacks make wooden axes, miners wooden then
-  stone pickaxes, farmers wooden hoes, and hunters wooden swords. A worker crafts and physically
-  places a crafting table first when a 3×3 recipe requires one.
-- The lead lumberjack crafts and places the first public chest near the bell. With no known tree,
-  lumberjacks explore in 24-block directional steps and remember searched waypoints and tree bases.
+  stone pickaxes, farmers wooden hoes, and hunters wooden swords. Workers in the same 32-block
+  village zone converge on one deterministic shared crafting station and reuse it; builders use
+  the same lookup while keeping site-local fallback stations.
+- The lead lumberjack crafts and places the first public chest near the bell and adds a separate,
+  accessible public chest once every known public container is full. With no known tree,
+  lumberjacks explore in 32-block directional steps out to 256 blocks, remember searched waypoints,
+  and broadcast discovered tree bases so other lumberjacks immediately stop redundant searches.
+- Farmers execute break → local drop collection → matching replant per mature crop, so a spread-out
+  batch cannot lose later plots because their seed drops fell outside one early pickup radius.
 - Guard Villagers entities receive generated visible names; nearby guards are included in the
   inspector and `/dv village info` tally.
 

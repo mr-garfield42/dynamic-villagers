@@ -5,11 +5,13 @@ import com.dynamicvillagers.network.VillageDebugStatePayload;
 import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.village.Village;
+import com.dynamicvillagers.village.VillageAnchor;
 import com.dynamicvillagers.village.VillageManager;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.behavior.PlanWorkBehavior;
 import com.dynamicvillagers.villager.role.LumberjackPlanner;
 import com.dynamicvillagers.villager.role.VillagerRole;
+import com.dynamicvillagers.villager.role.WorkerTools;
 import com.dynamicvillagers.villager.task.ExploreForTreesTask;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
@@ -17,6 +19,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -205,7 +208,18 @@ public class VillageGrowthTests {
                             .filter(entry -> entry.getValue().designation() == StorageLedger.Designation.PUBLIC)
                             .toList();
             helper.assertTrue(!storage.isEmpty() && helper.getLevel().getBlockState(storage.getFirst().getKey()).is(Blocks.CHEST),
-                    "the lead lumberjack should physically place a public chest near the bell");
+                    "the lead lumberjack should physically place a public chest near the bell; tasks="
+                            + essence.getTaskQueue().tasks().stream().map(task -> task.typeId()).toList()
+                            + ", carried logs/planks/table/chest/axe=" + carried(lumberjack, Items.OAK_LOG)
+                            + "/" + carried(lumberjack, Items.OAK_PLANKS)
+                            + "/" + carried(lumberjack, Items.CRAFTING_TABLE)
+                            + "/" + carried(lumberjack, Items.CHEST)
+                            + "/" + carried(lumberjack, Items.WOODEN_AXE)
+                            + ", tables=" + countBlocks(helper, Blocks.CRAFTING_TABLE, 12)
+                            + ", chests=" + countBlocks(helper, Blocks.CHEST, 12)
+                            + ", pos=" + lumberjack.blockPosition()
+                            + ", taskData=" + (essence.getTaskQueue().current() == null ? "none"
+                            : essence.getTaskQueue().current().save(helper.getLevel().registryAccess())));
             helper.assertTrue(storage.getFirst().getKey().getY() <= village.center().getY() + 2,
                     "public storage should be placed on village ground, not on a well or house roof");
             helper.assertTrue(carried(lumberjack, Items.WOODEN_AXE) > 0,
@@ -238,6 +252,137 @@ public class VillageGrowthTests {
                     "the lumberjack should physically walk toward the distant tree");
             helper.assertTrue(helper.getLevel().getGameTime() - start <= 300,
                     "a visible tree should be found within 15 seconds");
+            cleanup(helper);
+        });
+    }
+
+    @GameTest(template = "empty11x11", timeoutTicks = 100, batch = "dvGrowthTreeSearchRange")
+    public static void lumberjack_exploration_uses_a_larger_search_step(GameTestHelper helper) {
+        prepare(helper, false);
+        Villager lumberjack = helper.spawn(EntityType.VILLAGER, new BlockPos(2, 2, 5));
+        VillagerEssence essence = VillagerEssence.get(lumberjack);
+        essence.setRole(VillagerRole.LUMBERJACK);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.WOODEN_AXE));
+        helper.assertTrue(new LumberjackPlanner().plan(helper.getLevel(), lumberjack, essence),
+                "a lumberjack without known trees should plan exploration");
+        helper.assertTrue(essence.getTaskQueue().current() instanceof ExploreForTreesTask,
+                "the planned work should be tree exploration");
+        CompoundTag saved = essence.getTaskQueue().current().save(helper.getLevel().registryAccess());
+        BlockPos target = BlockPos.of(saved.getLong("target"));
+        BlockPos anchor = VillageAnchor.resolve(helper.getLevel(), lumberjack);
+        helper.assertTrue(Math.sqrt(target.distSqr(anchor)) >= 32.0,
+                "each exploration leg should cover at least 32 blocks");
+        cleanup(helper);
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty11x11", timeoutTicks = 300, batch = "dvGrowthTreeBroadcast")
+    public static void discovered_trees_stop_other_lumberjacks_exploring(GameTestHelper helper) {
+        prepare(helper, false);
+        VillageManager manager = VillageManager.get(helper.getLevel());
+        Village village = manager.create(helper.getLevel(), helper.absolutePos(BELL));
+        manager.setAutoStaff(village, false);
+        BlockPos tree = new BlockPos(9, 2, 5);
+        helper.setBlock(tree, Blocks.OAK_LOG);
+        helper.setBlock(tree.above(), Blocks.OAK_LOG);
+        helper.setBlock(tree.above(2), Blocks.OAK_LEAVES);
+        helper.setBlock(tree.above(2).north(), Blocks.OAK_LEAVES);
+        helper.setBlock(tree.above(2).south(), Blocks.OAK_LEAVES);
+        helper.setBlock(tree.above(2).east(), Blocks.OAK_LEAVES);
+        helper.setBlock(tree.above(2).west(), Blocks.OAK_LEAVES);
+
+        Villager finder = helper.spawn(EntityType.VILLAGER, new BlockPos(5, 2, 5));
+        Villager other = helper.spawn(EntityType.VILLAGER, new BlockPos(1, 2, 1));
+        manager.adopt(helper.getLevel(), finder, village);
+        manager.adopt(helper.getLevel(), other, village);
+        VillagerEssence finderEssence = VillagerEssence.get(finder);
+        VillagerEssence otherEssence = VillagerEssence.get(other);
+        finderEssence.setRole(VillagerRole.LUMBERJACK);
+        otherEssence.setRole(VillagerRole.LUMBERJACK);
+        finderEssence.getTaskQueue().enqueue(new ExploreForTreesTask(helper.absolutePos(new BlockPos(9, 2, 5))));
+        otherEssence.getTaskQueue().enqueue(new ExploreForTreesTask(helper.absolutePos(new BlockPos(1, 2, 9))));
+
+        helper.succeedWhen(() -> {
+            helper.assertTrue(otherEssence.getMemory().knownSpots(LumberjackPlanner.TREE_SPOT)
+                            .contains(helper.absolutePos(tree)),
+                    "a discovered grove should be shared with other village lumberjacks");
+            helper.assertTrue(!(otherEssence.getTaskQueue().current() instanceof ExploreForTreesTask),
+                    "other lumberjacks should stop exploring once a grove is reported");
+            cleanup(helper);
+        });
+    }
+
+    @GameTest(template = "empty11x11", timeoutTicks = 900, batch = "dvGrowthSharedTables")
+    public static void workers_share_one_spread_out_crafting_table(GameTestHelper helper) {
+        prepare(helper, false);
+        VillageManager manager = VillageManager.get(helper.getLevel());
+        Village village = manager.create(helper.getLevel(), helper.absolutePos(BELL));
+        manager.setAutoStaff(village, false);
+        Villager first = helper.spawn(EntityType.VILLAGER, new BlockPos(3, 2, 5));
+        Villager second = helper.spawn(EntityType.VILLAGER, new BlockPos(7, 2, 5));
+        manager.adopt(helper.getLevel(), first, village);
+        manager.adopt(helper.getLevel(), second, village);
+        for (Villager worker : List.of(first, second)) {
+            VillagerEssence essence = VillagerEssence.get(worker);
+            essence.getExtraInventory().setItem(0, new ItemStack(Items.OAK_PLANKS, 7));
+            essence.getExtraInventory().setItem(1, new ItemStack(Items.STICK, 2));
+            WorkerTools.planCraftedItem(helper.getLevel(), worker, essence, Items.WOODEN_PICKAXE, 1);
+        }
+        helper.onEachTick(() -> {
+            for (Villager worker : List.of(first, second)) {
+                VillagerEssence essence = VillagerEssence.get(worker);
+                if (essence.getTaskQueue().isEmpty() && carried(worker, Items.WOODEN_PICKAXE) == 0) {
+                    WorkerTools.planCraftedItem(helper.getLevel(), worker, essence, Items.WOODEN_PICKAXE, 1);
+                }
+            }
+        });
+        helper.succeedWhen(() -> {
+            helper.assertTrue(carried(first, Items.WOODEN_PICKAXE) == 1
+                            && carried(second, Items.WOODEN_PICKAXE) == 1,
+                    "both workers should craft at the shared village station");
+            helper.assertTrue(countBlocks(helper, Blocks.CRAFTING_TABLE, 12) == 1,
+                    "workers in the same village area should place only one crafting table");
+            cleanup(helper);
+        });
+    }
+
+    @GameTest(template = "empty11x11", timeoutTicks = 900, batch = "dvGrowthStorageExpansion")
+    public static void full_public_storage_causes_another_chest_to_be_built(GameTestHelper helper) {
+        prepare(helper, false);
+        VillageManager manager = VillageManager.get(helper.getLevel());
+        Village village = manager.create(helper.getLevel(), helper.absolutePos(BELL));
+        manager.setAutoStaff(village, false);
+        BlockPos fullChest = new BlockPos(2, 2, 2);
+        helper.setBlock(fullChest, Blocks.CHEST);
+        Container container = (Container) helper.getBlockEntity(fullChest);
+        for (int slot = 0; slot < container.getContainerSize(); slot++) {
+            container.setItem(slot, new ItemStack(Items.DIRT, 64));
+        }
+        BlockPos absoluteChest = helper.absolutePos(fullChest);
+        StorageLedger ledger = StorageLedger.get(helper.getLevel());
+        ledger.setDesignation(absoluteChest, StorageLedger.Designation.PUBLIC, null, village.id());
+        ledger.recordSnapshot(absoluteChest, container, helper.getLevel().getGameTime());
+
+        Villager lumberjack = helper.spawn(EntityType.VILLAGER, new BlockPos(5, 2, 6));
+        manager.adopt(helper.getLevel(), lumberjack, village);
+        VillagerEssence essence = VillagerEssence.get(lumberjack);
+        essence.setRole(VillagerRole.LUMBERJACK);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.WOODEN_AXE));
+        essence.getExtraInventory().setItem(1, new ItemStack(Items.CHEST));
+        helper.assertTrue(new LumberjackPlanner().plan(helper.getLevel(), lumberjack, essence),
+                "a full public chest should immediately queue storage expansion");
+
+        helper.succeedWhen(() -> {
+            List<BlockPos> publicChests = ledger.recordsNear(village.center(), village.radius()).stream()
+                    .filter(entry -> entry.getValue().villageId() == village.id())
+                    .filter(entry -> entry.getValue().designation() == StorageLedger.Designation.PUBLIC)
+                    .map(java.util.Map.Entry::getKey)
+                    .filter(pos -> helper.getLevel().getBlockState(pos).is(Blocks.CHEST))
+                    .toList();
+            helper.assertTrue(publicChests.size() >= 2,
+                    "a full public chest should cause the lead lumberjack to add storage");
+            helper.assertTrue(publicChests.stream().anyMatch(pos -> pos.distManhattan(absoluteChest) > 1),
+                    "expanded storage should be a separate accessible chest");
             cleanup(helper);
         });
     }
@@ -453,6 +598,16 @@ public class VillageGrowthTests {
         int count = 0;
         for (int i = 0; i < container.getContainerSize(); i++) {
             if (container.getItem(i).is(item)) count += container.getItem(i).getCount();
+        }
+        return count;
+    }
+
+    private static int countBlocks(GameTestHelper helper, net.minecraft.world.level.block.Block block, int radius) {
+        BlockPos center = helper.absolutePos(BELL);
+        int count = 0;
+        for (BlockPos pos : BlockPos.betweenClosed(center.offset(-radius, -4, -radius),
+                center.offset(radius, 4, radius))) {
+            if (helper.getLevel().getBlockState(pos).is(block)) count++;
         }
         return count;
     }

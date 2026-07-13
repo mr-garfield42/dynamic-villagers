@@ -8,6 +8,7 @@ import com.dynamicvillagers.construction.Blueprints;
 import com.dynamicvillagers.village.ConstructionLedger;
 import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.villager.VillagerEssence;
+import com.dynamicvillagers.villager.role.Crafting;
 import com.dynamicvillagers.villager.role.VillagerRole;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -759,7 +760,21 @@ public class ConstructionTests {
         helper.succeedWhen(() -> {
             // a door can only exist if the builder crafted planks, crafted+placed a table from
             // them, and crafted the door at that table — storage held none of those
-            helper.assertBlockPresent(Blocks.OAK_DOOR, new BlockPos(4, 3, 4)); // door lower
+            helper.assertTrue(helper.getBlockState(new BlockPos(4, 3, 4)).is(Blocks.OAK_DOOR),
+                    "the builder should place the crafted door; tasks="
+                            + essence.getTaskQueue().tasks().stream().map(task -> task.typeId()).toList()
+                            + ", logs/planks/table/door=" + countItem(villager.getInventory(), Items.OAK_LOG)
+                            + "/" + countItem(villager.getInventory(), Items.OAK_PLANKS)
+                            + "/" + countItem(villager.getInventory(), Items.CRAFTING_TABLE)
+                            + "/" + countItem(villager.getInventory(), Items.OAK_DOOR)
+                            + ", extra=" + countItem(essence.getExtraInventory(), Items.OAK_LOG)
+                            + "/" + countItem(essence.getExtraInventory(), Items.OAK_PLANKS)
+                            + "/" + countItem(essence.getExtraInventory(), Items.CRAFTING_TABLE)
+                            + "/" + countItem(essence.getExtraInventory(), Items.OAK_DOOR)
+                            + ", table=" + Crafting.findTable(helper.getLevel(), villager)
+                            + ", pos=" + villager.blockPosition()
+                            + ", taskData=" + (essence.getTaskQueue().current() == null ? "none"
+                            : essence.getTaskQueue().current().save(helper.getLevel().registryAccess())));
             helper.assertBlockPresent(Blocks.OAK_DOOR, new BlockPos(4, 4, 4)); // door upper
             helper.assertTrue(craftingTablePlacedNear(helper, new BlockPos(4, 2, 4)),
                     "the builder should have crafted and placed its own crafting table");

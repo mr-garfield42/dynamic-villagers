@@ -82,9 +82,11 @@ public class FarmerPlanner implements RolePlanner {
 
         if (!harvestSpots.isEmpty()) {
             List<BlockPos> batch = harvestSpots.subList(0, Math.min(MAX_TASKS_PER_CYCLE, harvestSpots.size()));
-            for (BlockPos crop : batch) queue.enqueue(new BreakBlockTask(crop));
-            queue.enqueue(new PickUpItemsTask(batch.getFirst(), 6.0));
-            for (BlockPos crop : batch) queue.enqueue(new PlaceBlockTask(crop, seedFilter(level.getBlockState(crop))));
+            for (BlockPos crop : batch) {
+                queue.enqueue(new BreakBlockTask(crop));
+                queue.enqueue(new PickUpItemsTask(crop, 4.0));
+                queue.enqueue(new PlaceBlockTask(crop, seedFilter(level.getBlockState(crop))));
+            }
             return true;
         }
         if (WorkerTools.planStoneUpgrade(level, villager, essence, Items.WOODEN_HOE, Items.STONE_HOE)) {

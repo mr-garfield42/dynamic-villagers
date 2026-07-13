@@ -66,7 +66,6 @@ public class BuilderPlanner implements RolePlanner {
     private static final String CHEST_FILTER = "item:minecraft:chest";
     private static final String TABLE_FILTER = "item:minecraft:crafting_table";
     private static final int CRAFT_CHAIN_DEPTH = 4; // logs → planks → sticks → … is plenty
-    private static final int TABLE_SCAN = 8; // how far a placed table is found from where a builder crafts
     private static final int MIN_FREE_SLOTS = 4;
     private static final int FETCH_COOLDOWN = 600; // between restock attempts while short
     private static final int FETCH_CAP = 64; // one errand's worth of one material
@@ -431,7 +430,7 @@ public class BuilderPlanner implements RolePlanner {
      */
     private static boolean planMaterialSupply(ServerLevel level, Villager villager, VillagerEssence essence,
                                               Blueprint blueprint, Map<Item, Integer> missing, long now) {
-        boolean tableReady = craftingTableNear(level, villager) != null;
+        boolean tableReady = Crafting.findTable(level, villager) != null;
         boolean planned = false;
         for (Map.Entry<Item, Integer> requirement : blueprint.requirements().entrySet()) {
             Item item = requirement.getKey();
@@ -471,11 +470,11 @@ public class BuilderPlanner implements RolePlanner {
     private static boolean ensureCraftingTable(ServerLevel level, Villager villager, VillagerEssence essence,
                                                ConstructionLedger.ConstructionSite site,
                                                Blueprint blueprint, Map<Item, Integer> missing, long now) {
-        if (craftingTableNear(level, villager) != null || !needsTableForMissing(level, villager, missing, now)) {
+        if (Crafting.findTable(level, villager) != null || !needsTableForMissing(level, villager, missing, now)) {
             return false;
         }
         if (essence.hasItem(villager, ItemFilter.parse(TABLE_FILTER))) {
-            BlockPos spot = stagingSpot(level, site, blueprint); // a free ring cell outside the footprint
+            BlockPos spot = WorkerTools.tableSpot(level, villager, stagingSpot(level, site, blueprint));
             if (spot == null) {
                 return false;
             }
@@ -500,19 +499,6 @@ public class BuilderPlanner implements RolePlanner {
             }
         }
         return false;
-    }
-
-    @Nullable
-    private static BlockPos craftingTableNear(ServerLevel level, Villager villager) {
-        BlockPos origin = villager.blockPosition();
-        for (BlockPos pos : BlockPos.betweenClosed(
-                origin.offset(-TABLE_SCAN, -TABLE_SCAN, -TABLE_SCAN),
-                origin.offset(TABLE_SCAN, TABLE_SCAN, TABLE_SCAN))) {
-            if (level.getBlockState(pos).is(Blocks.CRAFTING_TABLE)) {
-                return pos.immutable();
-            }
-        }
-        return null;
     }
 
     private static boolean hasLedgerSource(ServerLevel level, Villager villager, Item item, long now) {

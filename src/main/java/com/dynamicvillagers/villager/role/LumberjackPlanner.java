@@ -1,5 +1,6 @@
 package com.dynamicvillagers.villager.role;
 
+import com.dynamicvillagers.registry.DVTags;
 import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.village.Village;
 import com.dynamicvillagers.village.VillageAnchor;
@@ -46,8 +47,8 @@ public class LumberjackPlanner implements RolePlanner {
     private static final int MAX_REMEMBERED_TREES = 8;
     private static final double PICKUP_RADIUS = 4.0;
     private static final int EXTRA_SAPLINGS = 2; // planted around a felled tree, beyond the stump
-    private static final int SEARCH_STEP = 24;
-    private static final int MAX_SEARCH_DISTANCE = 96;
+    private static final int SEARCH_STEP = 32;
+    private static final int MAX_SEARCH_DISTANCE = 256;
 
     @Override
     public boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
@@ -111,10 +112,13 @@ public class LumberjackPlanner implements RolePlanner {
     private static boolean planPublicStorage(ServerLevel level, Villager villager, VillagerEssence essence) {
         Village village = VillageManager.get(level).villageFor(villager.getUUID());
         if (village == null || !isLeadLumberjack(level, villager, village)) return false;
-        boolean exists = StorageLedger.get(level).recordsNear(village.center(), village.radius()).stream()
-                .anyMatch(entry -> entry.getValue().villageId() == village.id()
-                        && entry.getValue().designation() == StorageLedger.Designation.PUBLIC);
-        if (exists) return false;
+        List<java.util.Map.Entry<BlockPos, StorageLedger.ContainerRecord>> publicStorage =
+                StorageLedger.get(level).recordsNear(village.center(), village.radius()).stream()
+                        .filter(entry -> entry.getValue().villageId() == village.id())
+                        .filter(entry -> entry.getValue().designation() == StorageLedger.Designation.PUBLIC)
+                        .toList();
+        if (!publicStorage.isEmpty()
+                && publicStorage.stream().anyMatch(entry -> entry.getValue().freeSlots() != 0)) return false;
         BlockPos spot = storageSpot(level, villager, village);
         if (spot == null) return false;
         if (essence.hasItem(villager, stack -> stack.is(Items.CHEST))) {
@@ -165,11 +169,17 @@ public class LumberjackPlanner implements RolePlanner {
             if (Math.abs(y - centerY) <= 2
                     && !below.is(Blocks.BARRIER)
                     && (level.getBlockState(pos).isAir() || level.getBlockState(pos).canBeReplaced())
+                    && noStorageNearby(level, pos)
                     && below.isFaceSturdy(level, pos.below(), Direction.UP)) {
                 return pos;
             }
         }
         return null;
+    }
+
+    private static boolean noStorageNearby(ServerLevel level, BlockPos spot) {
+        return BlockPos.betweenClosedStream(spot.offset(-1, -1, -1), spot.offset(1, 1, 1))
+                .noneMatch(pos -> level.getBlockState(pos).is(DVTags.STORAGE_CONTAINERS));
     }
 
     private static boolean canReach(Villager villager, BlockPos spot) {
