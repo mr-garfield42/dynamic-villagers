@@ -44,8 +44,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public class VillageManager extends SavedData {
@@ -337,7 +339,12 @@ public class VillageManager extends SavedData {
         return false;
     }
 
-    /** Gives a managed miner a distinct, legal starter quarry when it has no assigned mine. */
+    /**
+     * Gives a miner a distinct, legal starter quarry when it has no assigned mine. A village
+     * member digs at its village's edge; a roled miner outside any managed village anchors on
+     * its bell, bed, or own position instead, so command/profession-driven miners far from any
+     * bell start working too.
+     */
     public boolean ensureStarterQuarry(ServerLevel level, Villager villager) {
         VillagerEssence essence = VillagerEssence.get(villager);
         if (essence.getRole() != VillagerRole.MINER
@@ -345,8 +352,8 @@ public class VillageManager extends SavedData {
             return false;
         }
         Village village = villageFor(villager.getUUID());
-        if (village == null) return false;
-        VillagerEssence.QuarrySite quarry = starterQuarry(level, village);
+        BlockPos anchor = village != null ? village.center() : VillageAnchor.resolve(level, villager);
+        VillagerEssence.QuarrySite quarry = starterQuarry(level, anchor);
         if (quarry == null) return false;
         essence.setQuarrySite(quarry);
         return true;
@@ -369,28 +376,34 @@ public class VillageManager extends SavedData {
     }
 
     @Nullable
-    private static VillagerEssence.QuarrySite starterQuarry(ServerLevel level, Village village) {
-        for (Direction direction : Direction.Plane.HORIZONTAL) {
-            BlockPos edge = village.center().relative(direction, 24);
-            int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, edge.getX(), edge.getZ()) - 1;
-            BlockPos top = new BlockPos(edge.getX(), y, edge.getZ());
-            if (level.getFluidState(top).isEmpty() && level.getFluidState(top.above()).isEmpty()
-                    && !quarryAssigned(level, village, top)) {
-                return new VillagerEssence.QuarrySite(top, top.offset(3, -3, 3));
+    private static VillagerEssence.QuarrySite starterQuarry(ServerLevel level, BlockPos anchor) {
+        // three rings of candidates, nearest first — a waterlogged or fully claimed edge must
+        // not leave a pickaxe-holding miner idle
+        Set<BlockPos> claimed = claimedQuarryTops(level);
+        for (int distance = 24; distance <= 40; distance += 8) {
+            for (Direction direction : Direction.Plane.HORIZONTAL) {
+                BlockPos edge = anchor.relative(direction, distance);
+                int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, edge.getX(), edge.getZ()) - 1;
+                BlockPos top = new BlockPos(edge.getX(), y, edge.getZ());
+                if (level.getFluidState(top).isEmpty() && level.getFluidState(top.above()).isEmpty()
+                        && !claimed.contains(top)) {
+                    return new VillagerEssence.QuarrySite(top, top.offset(3, -3, 3));
+                }
             }
         }
         return null;
     }
 
-    private static boolean quarryAssigned(ServerLevel level, Village village, BlockPos top) {
+    /** Tops of every loaded miner's quarry, across villages — two pits must never share one. */
+    private static Set<BlockPos> claimedQuarryTops(ServerLevel level) {
+        Set<BlockPos> tops = new HashSet<>();
         for (Entity entity : level.getAllEntities()) {
-            if (entity instanceof Villager miner
-                    && VillagerEssence.get(miner).getHomeVillageId() == village.id()) {
+            if (entity instanceof Villager miner) {
                 VillagerEssence.QuarrySite quarry = VillagerEssence.get(miner).getQuarrySite();
-                if (quarry != null && quarry.cornerA().equals(top)) return true;
+                if (quarry != null) tops.add(quarry.cornerA());
             }
         }
-        return false;
+        return tops;
     }
 
     public boolean seedInitialPopulation(ServerLevel level, Village village) {

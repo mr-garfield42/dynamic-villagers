@@ -767,8 +767,11 @@ Captured for later planning — do not start implementing until a phase plan pic
   are shared on a 32-block village grid instead of being placed per worker. Tree searches advance
   in 32-block legs out to 256 blocks, and a discovered grove is broadcast to stop other lumberjack
   searches. When all public containers are full, the lead lumberjack adds a separate accessible
-  public chest. A managed miner with a pickaxe but no site self-claims a distinct starter quarry,
-  so profession/command-driven miners start working as well. All 135 GameTests pass.
+  public chest. A miner with a pickaxe but no site self-claims a distinct starter quarry — village
+  members at the village edge; a miner outside any managed village (no bell in range) anchors on
+  its bell/bed/own position instead, and candidate spots span three distances (24/32/40) so watery
+  or already-claimed edges cannot stall it (owner playtest fix 2026-07-16: roled miners far from a
+  bell crafted wooden pickaxes then idled forever). All 136 GameTests pass.
   (`unhomed_idle_villagers_spread_across_available_houses` is pathfinding-timing sensitive and
   flakes occasionally — re-run the suite before treating a lone failure of it as a regression.)
 

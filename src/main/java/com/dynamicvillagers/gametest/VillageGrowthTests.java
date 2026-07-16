@@ -455,6 +455,44 @@ public class VillageGrowthTests {
         });
     }
 
+    @GameTest(template = "empty11x11", timeoutTicks = 1000, batch = "dvGrowthMinerNoVillage")
+    public static void miner_without_a_village_still_claims_and_works_a_starter_quarry(GameTestHelper helper) {
+        // the owner playtest regression: a /dv-roled miner far from any bell crafted its
+        // wooden pickaxe and then idled forever, because only village members got quarries
+        VillageManager.get(helper.getLevel()).clear();
+        ConstructionLedger.get(helper.getLevel()).clear();
+        StorageLedger.get(helper.getLevel()).clear();
+        helper.getLevel().setDayTime(1000);
+        Villager miner = helper.spawn(EntityType.VILLAGER, new BlockPos(5, 2, 6));
+        VillagerEssence essence = VillagerEssence.get(miner);
+        essence.setRole(VillagerRole.MINER);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.WOODEN_PICKAXE));
+        new MinerPlanner().plan(helper.getLevel(), miner, essence);
+        helper.assertTrue(essence.getQuarrySite() != null,
+                "a village-less miner with a wooden pickaxe should self-claim a starter quarry");
+        essence.getTaskQueue().clear();
+        for (int x = 7; x <= 9; x++) {
+            for (int z = 7; z <= 9; z++) helper.setBlock(new BlockPos(x, 2, z), Blocks.STONE);
+        }
+        essence.setQuarrySite(new VillagerEssence.QuarrySite(
+                helper.absolutePos(new BlockPos(7, 2, 7)), helper.absolutePos(new BlockPos(9, 1, 9))));
+        helper.assertTrue(new MinerPlanner().plan(helper.getLevel(), miner, essence),
+                "the village-less miner should queue nearby quarry work rather than idle");
+        long started = helper.getLevel().getGameTime();
+
+        helper.succeedWhen(() -> {
+            BlockPos firstWorkBlock = essence.getQuarrySite().cornerA().south();
+            helper.assertTrue(!helper.getLevel().getBlockState(firstWorkBlock).is(Blocks.STONE),
+                    "a village-less wooden-pickaxe miner should begin quarrying stone; site="
+                            + essence.getQuarrySite() + ", work=" + firstWorkBlock
+                            + ", tasks=" + essence.getTaskQueue().tasks().stream()
+                            .map(task -> task.typeId()).toList() + ", pos=" + miner.blockPosition());
+            helper.assertTrue(helper.getLevel().getGameTime() - started <= 600,
+                    "starter quarry work should begin within thirty seconds");
+            cleanup(helper);
+        });
+    }
+
     @GameTest(template = "empty11x11", timeoutTicks = 2200, batch = "dvGrowthStoneSupply")
     public static void stored_wood_wakes_miner_who_crafts_mines_and_deposits_stone(GameTestHelper helper) {
         prepare(helper, false);
