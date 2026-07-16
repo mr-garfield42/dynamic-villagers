@@ -428,8 +428,11 @@ public class VillageGrowthTests {
         VillagerEssence essence = VillagerEssence.get(miner);
         essence.setRole(VillagerRole.MINER);
         essence.getExtraInventory().setItem(0, new ItemStack(Items.WOODEN_PICKAXE));
-        helper.assertTrue(new MinerPlanner().plan(helper.getLevel(), miner, essence)
-                        && essence.getQuarrySite() != null,
+        // the plan's own return may be false if neighbouring test terrain makes the first
+        // candidate pits unworkable (the re-site path consumes that cycle) — receiving a
+        // quarry is the invariant; the local-site phase below asserts real work deterministically
+        new MinerPlanner().plan(helper.getLevel(), miner, essence);
+        helper.assertTrue(essence.getQuarrySite() != null,
                 "a managed miner with a wooden pickaxe should immediately receive a starter quarry");
         essence.getTaskQueue().clear();
         for (int x = 7; x <= 9; x++) {
@@ -491,6 +494,40 @@ public class VillageGrowthTests {
                     "starter quarry work should begin within thirty seconds");
             cleanup(helper);
         });
+    }
+
+    @GameTest(template = "empty11x11", timeoutTicks = 400, batch = "dvGrowthMinerResite")
+    public static void miner_abandons_unworkable_quarry_and_claims_a_fresh_one(GameTestHelper helper) {
+        // owner playtest regression: a quarry with nothing left to work (dug out, or its next
+        // dig batch touches water) made planQuarryBatch report nothing to do, and the miner
+        // kept the dead site assigned forever — idle with an empty task queue
+        prepare(helper, false);
+        VillageManager manager = VillageManager.get(helper.getLevel());
+        Village village = manager.create(helper.getLevel(), helper.absolutePos(BELL));
+        manager.setAutoStaff(village, false);
+        Villager miner = helper.spawn(EntityType.VILLAGER, new BlockPos(5, 2, 6));
+        manager.adopt(helper.getLevel(), miner, village);
+        VillagerEssence essence = VillagerEssence.get(miner);
+        essence.setRole(VillagerRole.MINER);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.WOODEN_PICKAXE));
+        // a fully dug-out pit, staircase included — with no cobble carried and no containers
+        // known, the staircase cannot be rebuilt either, so this site has nothing workable
+        for (int x = 7; x <= 9; x++) {
+            for (int z = 7; z <= 9; z++) helper.setBlock(new BlockPos(x, 1, z), Blocks.AIR);
+        }
+        VillagerEssence.QuarrySite dugOut = new VillagerEssence.QuarrySite(
+                helper.absolutePos(new BlockPos(7, 2, 7)), helper.absolutePos(new BlockPos(9, 1, 9)));
+        essence.setQuarrySite(dugOut);
+        new MinerPlanner().plan(helper.getLevel(), miner, essence);
+        helper.assertTrue(essence.getQuarrySite() != null
+                        && !essence.getQuarrySite().cornerA().equals(dugOut.cornerA()),
+                "the dug-out quarry should be abandoned for a fresh distinct site, not held while idle; site="
+                        + essence.getQuarrySite());
+        helper.assertTrue(essence.getMemory().knownSpots(VillageManager.REJECTED_QUARRY_SPOT)
+                        .contains(dugOut.cornerA()),
+                "the dead spot should be remembered so it is never re-claimed");
+        cleanup(helper);
+        helper.succeed();
     }
 
     @GameTest(template = "empty11x11", timeoutTicks = 2200, batch = "dvGrowthStoneSupply")

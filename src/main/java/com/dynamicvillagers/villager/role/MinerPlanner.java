@@ -136,6 +136,17 @@ public class MinerPlanner implements RolePlanner {
 
         if (essence.getQuarrySite() != null) {
             Boolean quarry = planQuarryBatch(level, villager, essence, queue, hasTorches);
+            if (quarry == null) {
+                // the pit is dug out or fluid-blocked — a player would walk away and open a
+                // new pit, not stand at the edge forever. Remember the dead spot so the next
+                // self-claim picks a different one.
+                memory.rememberSpot(VillageManager.REJECTED_QUARRY_SPOT,
+                        essence.getQuarrySite().cornerA(), level.getGameTime());
+                essence.setQuarrySite(null);
+                if (VillageManager.get(level).ensureStarterQuarry(level, villager)) {
+                    quarry = planQuarryBatch(level, villager, essence, queue, hasTorches);
+                }
+            }
             if (quarry != null) {
                 if (!quarry) {
                     fearedDarkSite = true; // dark pit, no torches

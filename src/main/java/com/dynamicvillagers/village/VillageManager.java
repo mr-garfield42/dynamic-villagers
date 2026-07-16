@@ -339,11 +339,14 @@ public class VillageManager extends SavedData {
         return false;
     }
 
+    /** Memory kind for quarry tops a miner tried and had to walk away from (flooded/finished). */
+    public static final String REJECTED_QUARRY_SPOT = "quarry_rejected";
+
     /**
      * Gives a miner a distinct, legal starter quarry when it has no assigned mine. A village
      * member digs at its village's edge; a roled miner outside any managed village anchors on
      * its bell, bed, or own position instead, so command/profession-driven miners far from any
-     * bell start working too.
+     * bell start working too. Spots the miner already rejected (flooded or dug out) are skipped.
      */
     public boolean ensureStarterQuarry(ServerLevel level, Villager villager) {
         VillagerEssence essence = VillagerEssence.get(villager);
@@ -353,7 +356,8 @@ public class VillageManager extends SavedData {
         }
         Village village = villageFor(villager.getUUID());
         BlockPos anchor = village != null ? village.center() : VillageAnchor.resolve(level, villager);
-        VillagerEssence.QuarrySite quarry = starterQuarry(level, anchor);
+        VillagerEssence.QuarrySite quarry = starterQuarry(level, anchor,
+                essence.getMemory().knownSpots(REJECTED_QUARRY_SPOT));
         if (quarry == null) return false;
         essence.setQuarrySite(quarry);
         return true;
@@ -376,7 +380,8 @@ public class VillageManager extends SavedData {
     }
 
     @Nullable
-    private static VillagerEssence.QuarrySite starterQuarry(ServerLevel level, BlockPos anchor) {
+    private static VillagerEssence.QuarrySite starterQuarry(ServerLevel level, BlockPos anchor,
+                                                            Set<BlockPos> rejected) {
         // three rings of candidates, nearest first — a waterlogged or fully claimed edge must
         // not leave a pickaxe-holding miner idle
         Set<BlockPos> claimed = claimedQuarryTops(level);
@@ -386,7 +391,7 @@ public class VillageManager extends SavedData {
                 int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, edge.getX(), edge.getZ()) - 1;
                 BlockPos top = new BlockPos(edge.getX(), y, edge.getZ());
                 if (level.getFluidState(top).isEmpty() && level.getFluidState(top.above()).isEmpty()
-                        && !claimed.contains(top)) {
+                        && !claimed.contains(top) && !rejected.contains(top)) {
                     return new VillagerEssence.QuarrySite(top, top.offset(3, -3, 3));
                 }
             }

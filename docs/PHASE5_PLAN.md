@@ -22,7 +22,7 @@ idle-only socializing while a worker has queued tasks. Natural villages receive 
   distribute across homes, and storage placement rejects inaccessible roofs. Farmers collect and
   replant each harvested plot before moving on, crafting tables are shared village stations,
   lumberjacks share discovered groves, and full public storage is expanded. The full suite contains
-  136 passing GameTests. Remaining
+  137 passing GameTests. Remaining
 before the phase gate: broaden the two-village/persistence matrix, add direct
 FARM/WAREHOUSE decision tests and the complete breed → house → build → breed end-to-end scenario,
 then record the many-village performance benchmark and manual inspector playtest.
@@ -65,6 +65,11 @@ then record the many-village performance benchmark and manual inspector playtest
   outside any managed village (no bell in range) anchors the quarry on its bell/bed/own position,
   and candidates span three distances per direction so waterlogged or already-claimed village
   edges cannot exhaust the search (owner playtest fix 2026-07-16).
+- A quarry that cannot be worked — its next dig batch touches fluid, or the pit is dug out — is
+  abandoned rather than held forever: the dead top is remembered as a `quarry_rejected` memory
+  spot (never re-claimed by that miner) and a fresh distinct starter quarry is claimed in the
+  same planning pass (second owner playtest fix 2026-07-16; previously such miners idled with an
+  empty task queue and `ensureStarterQuarry` never re-fired because the site was still set).
 - Guard Villagers entities receive generated visible names; nearby guards are included in the
   inspector and `/dv village info` tally.
 

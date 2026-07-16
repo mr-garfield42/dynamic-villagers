@@ -771,9 +771,14 @@ Captured for later planning — do not start implementing until a phase plan pic
   members at the village edge; a miner outside any managed village (no bell in range) anchors on
   its bell/bed/own position instead, and candidate spots span three distances (24/32/40) so watery
   or already-claimed edges cannot stall it (owner playtest fix 2026-07-16: roled miners far from a
-  bell crafted wooden pickaxes then idled forever). All 136 GameTests pass.
-  (`unhomed_idle_villagers_spread_across_available_houses` is pathfinding-timing sensitive and
-  flakes occasionally — re-run the suite before treating a lone failure of it as a regression.)
+  bell crafted wooden pickaxes then idled forever). A quarry whose next dig batch touches fluid, or
+  that is dug out, is abandoned: the dead top goes into villager memory (`quarry_rejected` spots)
+  and the miner immediately self-claims a fresh distinct pit — without this, a miner whose
+  persisted quarry went bad idled forever with an empty task queue (second owner playtest fix,
+  same day). All 137 GameTests pass.
+  (`unhomed_idle_villagers_spread_across_available_houses` and
+  `active_worker_drops_social_follow_target` are timing-sensitive and flake occasionally —
+  re-run the suite before treating a lone failure of either as a regression.)
 
 ## Dev environment (this machine)
 - JDK 21 is portable at `%USERPROFILE%\.jdks\jdk-21.0.11+10` (not on PATH). Before Gradle:
