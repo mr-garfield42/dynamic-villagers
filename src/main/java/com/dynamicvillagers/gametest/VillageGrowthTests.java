@@ -10,6 +10,7 @@ import com.dynamicvillagers.village.VillageManager;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.behavior.PlanWorkBehavior;
 import com.dynamicvillagers.villager.role.LumberjackPlanner;
+import com.dynamicvillagers.villager.role.MinerPlanner;
 import com.dynamicvillagers.villager.role.VillagerRole;
 import com.dynamicvillagers.villager.role.WorkerTools;
 import com.dynamicvillagers.villager.task.ExploreForTreesTask;
@@ -412,6 +413,44 @@ public class VillageGrowthTests {
                     "the stone-equipped miner should mine the visible iron ore");
             helper.assertTrue(helper.getLevel().getGameTime() - start <= 800,
                     "wood-to-stone-to-iron progression should finish within 40 seconds");
+            cleanup(helper);
+        });
+    }
+
+    @GameTest(template = "empty11x11", timeoutTicks = 1000, batch = "dvGrowthMinerStarts")
+    public static void managed_miner_with_a_wooden_pickaxe_claims_and_works_a_starter_quarry(GameTestHelper helper) {
+        prepare(helper, false);
+        VillageManager manager = VillageManager.get(helper.getLevel());
+        Village village = manager.create(helper.getLevel(), helper.absolutePos(BELL));
+        manager.setAutoStaff(village, false);
+        Villager miner = helper.spawn(EntityType.VILLAGER, new BlockPos(5, 2, 6));
+        manager.adopt(helper.getLevel(), miner, village);
+        VillagerEssence essence = VillagerEssence.get(miner);
+        essence.setRole(VillagerRole.MINER);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.WOODEN_PICKAXE));
+        helper.assertTrue(new MinerPlanner().plan(helper.getLevel(), miner, essence)
+                        && essence.getQuarrySite() != null,
+                "a managed miner with a wooden pickaxe should immediately receive a starter quarry");
+        essence.getTaskQueue().clear();
+        for (int x = 7; x <= 9; x++) {
+            for (int z = 7; z <= 9; z++) helper.setBlock(new BlockPos(x, 2, z), Blocks.STONE);
+        }
+        essence.setQuarrySite(new VillagerEssence.QuarrySite(
+                helper.absolutePos(new BlockPos(7, 2, 7)), helper.absolutePos(new BlockPos(9, 1, 9))));
+        helper.assertTrue(new MinerPlanner().plan(helper.getLevel(), miner, essence),
+                "the assigned miner should queue nearby quarry work rather than idle");
+        long started = helper.getLevel().getGameTime();
+
+        helper.succeedWhen(() -> {
+            BlockPos firstWorkBlock = essence.getQuarrySite().cornerA().south();
+            helper.assertTrue(!helper.getLevel().getBlockState(firstWorkBlock).is(Blocks.STONE),
+                    "a wooden-pickaxe miner should leave the village and begin quarrying stone; site="
+                            + essence.getQuarrySite() + ", work=" + firstWorkBlock
+                            + ", state=" + helper.getLevel().getBlockState(firstWorkBlock)
+                            + ", tasks=" + essence.getTaskQueue().tasks().stream()
+                            .map(task -> task.typeId()).toList() + ", pos=" + miner.blockPosition());
+            helper.assertTrue(helper.getLevel().getGameTime() - started <= 600,
+                    "starter quarry work should begin within thirty seconds");
             cleanup(helper);
         });
     }

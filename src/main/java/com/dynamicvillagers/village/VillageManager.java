@@ -331,12 +331,25 @@ public class VillageManager extends SavedData {
             essence.setRole(needed);
             essence.setManagerManagedRole(true);
             if (openSite != null) essence.setAssignedSiteId(openSite.id());
-            if (needed == VillagerRole.MINER && essence.getQuarrySite() == null) {
-                essence.setQuarrySite(starterQuarry(level, village));
-            }
+            if (needed == VillagerRole.MINER) ensureStarterQuarry(level, villager);
             return true;
         }
         return false;
+    }
+
+    /** Gives a managed miner a distinct, legal starter quarry when it has no assigned mine. */
+    public boolean ensureStarterQuarry(ServerLevel level, Villager villager) {
+        VillagerEssence essence = VillagerEssence.get(villager);
+        if (essence.getRole() != VillagerRole.MINER
+                || essence.getMineSite() != null || essence.getQuarrySite() != null) {
+            return false;
+        }
+        Village village = villageFor(villager.getUUID());
+        if (village == null) return false;
+        VillagerEssence.QuarrySite quarry = starterQuarry(level, village);
+        if (quarry == null) return false;
+        essence.setQuarrySite(quarry);
+        return true;
     }
 
     private static VillagerRole neededGatherer(Village village) {
@@ -361,11 +374,23 @@ public class VillageManager extends SavedData {
             BlockPos edge = village.center().relative(direction, 24);
             int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, edge.getX(), edge.getZ()) - 1;
             BlockPos top = new BlockPos(edge.getX(), y, edge.getZ());
-            if (level.getFluidState(top).isEmpty() && level.getFluidState(top.above()).isEmpty()) {
+            if (level.getFluidState(top).isEmpty() && level.getFluidState(top.above()).isEmpty()
+                    && !quarryAssigned(level, village, top)) {
                 return new VillagerEssence.QuarrySite(top, top.offset(3, -3, 3));
             }
         }
         return null;
+    }
+
+    private static boolean quarryAssigned(ServerLevel level, Village village, BlockPos top) {
+        for (Entity entity : level.getAllEntities()) {
+            if (entity instanceof Villager miner
+                    && VillagerEssence.get(miner).getHomeVillageId() == village.id()) {
+                VillagerEssence.QuarrySite quarry = VillagerEssence.get(miner).getQuarrySite();
+                if (quarry != null && quarry.cornerA().equals(top)) return true;
+            }
+        }
+        return false;
     }
 
     public boolean seedInitialPopulation(ServerLevel level, Village village) {

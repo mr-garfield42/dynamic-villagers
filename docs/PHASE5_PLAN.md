@@ -22,7 +22,7 @@ idle-only socializing while a worker has queued tasks. Natural villages receive 
   distribute across homes, and storage placement rejects inaccessible roofs. Farmers collect and
   replant each harvested plot before moving on, crafting tables are shared village stations,
   lumberjacks share discovered groves, and full public storage is expanded. The full suite contains
-  134 passing GameTests. Remaining
+  135 passing GameTests. Remaining
 before the phase gate: broaden the two-village/persistence matrix, add direct
 FARM/WAREHOUSE decision tests and the complete breed → house → build → breed end-to-end scenario,
 then record the many-village performance benchmark and manual inspector playtest.
@@ -60,6 +60,8 @@ then record the many-village performance benchmark and manual inspector playtest
   and broadcast discovered tree bases so other lumberjacks immediately stop redundant searches.
 - Farmers execute break → local drop collection → matching replant per mature crop, so a spread-out
   batch cannot lose later plots because their seed drops fell outside one early pickup radius.
+- A managed miner that has a pickaxe but no mine/quarry assignment self-claims a distinct starter
+  quarry before it plans an upgrade, so profession/command-driven miners cannot remain idle.
 - Guard Villagers entities receive generated visible names; nearby guards are included in the
   inspector and `/dv village info` tally.
 

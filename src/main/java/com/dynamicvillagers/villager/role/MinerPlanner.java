@@ -2,6 +2,7 @@ package com.dynamicvillagers.villager.role;
 
 import com.dynamicvillagers.village.StorageLedger;
 import com.dynamicvillagers.village.VillageAnchor;
+import com.dynamicvillagers.village.VillageManager;
 import com.dynamicvillagers.villager.PerceptionSystem;
 import com.dynamicvillagers.villager.VillagerEssence;
 import com.dynamicvillagers.villager.VillagerMemory;
@@ -83,6 +84,10 @@ public class MinerPlanner implements RolePlanner {
             }
             return RequestChore.plan(level, villager, essence, KEEP_ON_DEPOSIT)
                     || TorchChore.plan(level, villager, essence);
+        }
+
+        if (essence.getMineSite() == null && essence.getQuarrySite() == null) {
+            VillageManager.get(level).ensureStarterQuarry(level, villager);
         }
 
         if (!canHarvestIron(villager, essence)

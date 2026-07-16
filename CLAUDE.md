@@ -767,7 +767,8 @@ Captured for later planning — do not start implementing until a phase plan pic
   are shared on a 32-block village grid instead of being placed per worker. Tree searches advance
   in 32-block legs out to 256 blocks, and a discovered grove is broadcast to stop other lumberjack
   searches. When all public containers are full, the lead lumberjack adds a separate accessible
-  public chest. All 134 GameTests passed twice after a clean build.
+  public chest. A managed miner with a pickaxe but no site self-claims a distinct starter quarry,
+  so profession/command-driven miners start working as well. All 135 GameTests pass.
 
 ## Dev environment (this machine)
 - JDK 21 is portable at `%USERPROFILE%\.jdks\jdk-21.0.11+10` (not on PATH). Before Gradle:
