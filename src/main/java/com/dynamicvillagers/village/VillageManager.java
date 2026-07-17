@@ -392,7 +392,9 @@ public class VillageManager extends SavedData {
                 BlockPos top = new BlockPos(edge.getX(), y, edge.getZ());
                 if (level.getFluidState(top).isEmpty() && level.getFluidState(top.above()).isEmpty()
                         && !claimed.contains(top) && !rejected.contains(top)) {
-                    return new VillagerEssence.QuarrySite(top, top.offset(3, -3, 3));
+                    // 24 deep: the spiral perimeter staircase keeps any depth walkable, and
+                    // the pit reaches real stone instead of scratching topsoil (owner request)
+                    return new VillagerEssence.QuarrySite(top, top.offset(3, -24, 3));
                 }
             }
         }

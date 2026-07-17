@@ -540,8 +540,51 @@ public class ResourceGatheringTests {
             helper.assertTrue(carriedCount(villager, Items.COBBLESTONE)
                             + groundCount(helper, Items.COBBLESTONE) >= 14,
                     "the dug blocks should exist as cobblestone (carried or on the ground)");
-            helper.assertTrue(anyTorchInArena(helper),
-                    "quarry torches must survive on rim, stairs, or dug floor");
+            // the pit is fully excavated now, so a torch's support block may legitimately be
+            // dug from under it — the torch pops as a drop, and the miner may pocket it again
+            helper.assertTrue(anyTorchInArena(helper) || groundCount(helper, Items.TORCH) > 0
+                            || carriedCount(villager, Items.TORCH) > 0,
+                    "quarry torches must survive placed, dropped, or re-collected");
+            villager.discard(); // a finished miner now re-sites — do not let it roam the arena
+        });
+    }
+
+    @GameTest(template = "empty5x5", timeoutTicks = 1200, batch = "dvMinerEscape")
+    public static void trapped_miner_carves_a_staircase_out_of_its_pit(GameTestHelper helper) {
+        helper.getLevel().setDayTime(1000);
+        // sheer 4-high walls all around — a quarry pit whose staircase was destroyed; the
+        // miner must carve a rising doorway through a wall instead of pacing forever
+        for (int x = 0; x <= 4; x++) {
+            for (int z = 0; z <= 4; z++) {
+                if (x == 0 || x == 4 || z == 0 || z == 4) {
+                    for (int y = 2; y <= 5; y++) {
+                        helper.setBlock(new BlockPos(x, y, z), Blocks.DIRT);
+                    }
+                }
+            }
+        }
+        Villager miner = helper.spawn(EntityType.VILLAGER, CENTER);
+        VillagerEssence essence = VillagerEssence.get(miner);
+        essence.setRole(VillagerRole.MINER);
+        essence.getExtraInventory().setItem(0, new ItemStack(Items.WOODEN_PICKAXE));
+        // the walled interior is this miner's own quarry — self-rescue never carves elsewhere
+        essence.setQuarrySite(new VillagerEssence.QuarrySite(
+                helper.absolutePos(new BlockPos(1, 5, 1)), helper.absolutePos(new BlockPos(3, 2, 3))));
+        helper.succeedWhen(() -> {
+            boolean opened = false;
+            for (int x = 0; x <= 4 && !opened; x++) {
+                for (int z = 0; z <= 4 && !opened; z++) {
+                    if (x != 0 && x != 4 && z != 0 && z != 4) continue;
+                    BlockPos doorway = new BlockPos(x, 3, z);
+                    opened = helper.getBlockState(doorway).isAir()
+                            && helper.getBlockState(doorway.above()).isAir();
+                }
+            }
+            helper.assertTrue(opened,
+                    "a trapped miner should carve a rising doorway through a pit wall; pos="
+                            + miner.blockPosition() + ", tasks=" + essence.getTaskQueue().tasks()
+                            .stream().map(task -> task.typeId()).toList());
+            miner.discard(); // an escaped miner now re-sites — do not let it roam the arena
         });
     }
 

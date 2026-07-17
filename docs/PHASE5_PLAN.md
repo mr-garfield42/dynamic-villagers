@@ -22,7 +22,7 @@ idle-only socializing while a worker has queued tasks. Natural villages receive 
   distribute across homes, and storage placement rejects inaccessible roofs. Farmers collect and
   replant each harvested plot before moving on, crafting tables are shared village stations,
   lumberjacks share discovered groves, and full public storage is expanded. The full suite contains
-  137 passing GameTests. Remaining
+  138 passing GameTests. Remaining
 before the phase gate: broaden the two-village/persistence matrix, add direct
 FARM/WAREHOUSE decision tests and the complete breed → house → build → breed end-to-end scenario,
 then record the many-village performance benchmark and manual inspector playtest.
@@ -67,9 +67,16 @@ then record the many-village performance benchmark and manual inspector playtest
   edges cannot exhaust the search (owner playtest fix 2026-07-16).
 - A quarry that cannot be worked — its next dig batch touches fluid, or the pit is dug out — is
   abandoned rather than held forever: the dead top is remembered as a `quarry_rejected` memory
-  spot (never re-claimed by that miner) and a fresh distinct starter quarry is claimed in the
-  same planning pass (second owner playtest fix 2026-07-16; previously such miners idled with an
-  empty task queue and `ensureStarterQuarry` never re-fired because the site was still set).
+  spot (never re-claimed by that miner), the pit's remaining drops are swept and the load banked
+  to storage, and a fresh distinct starter quarry follows (second owner playtest fix 2026-07-16;
+  previously such miners idled with an empty task queue and `ensureStarterQuarry` never re-fired
+  because the site was still set).
+- Quarry overhaul (owner requests 2026-07-17): the staircase spirals down the pit perimeter so
+  depth is uncapped (starter pits are 24 deep, reaching real stone), stair repairs use any
+  carried scaffold block (dirt or cobblestone), mid-dig hauling triggers at ~3 stacks instead of
+  a quarter-stack with the full yield banked on pit completion, and a miner trapped inside its
+  own pit carves a rising 1×2 stair out through the lowest wall (`EscapeChore`, block-walkability
+  flood fill, gated to its own diggings).
 - Guard Villagers entities receive generated visible names; nearby guards are included in the
   inspector and `/dv village info` tally.
 

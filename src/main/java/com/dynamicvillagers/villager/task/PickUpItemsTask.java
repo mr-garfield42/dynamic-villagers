@@ -41,6 +41,7 @@ public class PickUpItemsTask implements Task {
 
     private final BlockPos anchor;
     private final double radius;
+    private final int giveUpTicks;
     private int ticksRun;
     private int targetTicks;
     @Nullable
@@ -50,8 +51,14 @@ public class PickUpItemsTask implements Task {
     private Set<Integer> eligible; // snapshot after the window; null = everything qualifies
 
     public PickUpItemsTask(BlockPos anchor, double radius) {
+        this(anchor, radius, GIVE_UP_TICKS);
+    }
+
+    /** A shorter deadline suits quick sweeps that must not stall the tasks queued behind them. */
+    public PickUpItemsTask(BlockPos anchor, double radius, int giveUpTicks) {
         this.anchor = anchor;
         this.radius = radius;
+        this.giveUpTicks = giveUpTicks;
     }
 
     @Override
@@ -61,7 +68,7 @@ public class PickUpItemsTask implements Task {
 
     @Override
     public Status tick(ServerLevel level, Villager villager) {
-        if (++ticksRun > GIVE_UP_TICKS) {
+        if (++ticksRun > giveUpTicks) {
             return Status.FAILED;
         }
         if (ticksRun == NEW_ITEM_WINDOW_TICKS) {
@@ -124,10 +131,12 @@ public class PickUpItemsTask implements Task {
         CompoundTag tag = new CompoundTag();
         tag.putLong("anchor", anchor.asLong());
         tag.putDouble("radius", radius);
+        tag.putInt("give_up", giveUpTicks);
         return tag;
     }
 
     public static Task load(CompoundTag tag, HolderLookup.Provider provider) {
-        return new PickUpItemsTask(BlockPos.of(tag.getLong("anchor")), tag.getDouble("radius"));
+        return new PickUpItemsTask(BlockPos.of(tag.getLong("anchor")), tag.getDouble("radius"),
+                tag.contains("give_up") ? tag.getInt("give_up") : GIVE_UP_TICKS);
     }
 }

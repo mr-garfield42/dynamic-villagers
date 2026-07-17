@@ -41,7 +41,9 @@ import java.util.function.Predicate;
 public class MinerPlanner implements RolePlanner {
     public static final String ORE_SPOT = "ore";
     public static final int MAX_TUNNEL_LENGTH = 64;
-    private static final int HAUL_THRESHOLD = 16; // deposit once carrying this many non-kept items
+    // mid-dig haul trigger, ~3 stacks — the yield of a finished pit is banked on completion,
+    // so a miner no longer trots to storage every quarter-stack (owner playtest request)
+    private static final int HAUL_THRESHOLD = 192;
     private static final List<String> KEEP_ON_DEPOSIT = List.of("pickaxe", "food", "item:minecraft:torch");
     private static final int MIN_FREE_SLOTS = 4;
     private static final int SCAN_RADIUS = 10;
@@ -58,6 +60,9 @@ public class MinerPlanner implements RolePlanner {
     public boolean plan(ServerLevel level, Villager villager, VillagerEssence essence) {
         TaskQueue queue = essence.getTaskQueue();
         VillagerMemory memory = essence.getMemory();
+        if (EscapeChore.plan(level, villager, essence)) {
+            return true; // trapped in a pit — nothing else matters until it can walk out
+        }
         Predicate<ItemStack> keep = ItemFilter.parseAny(KEEP_ON_DEPOSIT);
         boolean haulReady = essence.countEmptySlots(villager) < MIN_FREE_SLOTS
                 || essence.countItems(villager, stack -> !keep.test(stack)) >= HAUL_THRESHOLD;
@@ -140,9 +145,18 @@ public class MinerPlanner implements RolePlanner {
                 // the pit is dug out or fluid-blocked — a player would walk away and open a
                 // new pit, not stand at the edge forever. Remember the dead spot so the next
                 // self-claim picks a different one.
-                memory.rememberSpot(VillageManager.REJECTED_QUARRY_SPOT,
-                        essence.getQuarrySite().cornerA(), level.getGameTime());
+                BlockPos pitTop = essence.getQuarrySite().cornerA();
+                memory.rememberSpot(VillageManager.REJECTED_QUARRY_SPOT, pitTop, level.getGameTime());
                 essence.setQuarrySite(null);
+                if (knowsStorage) {
+                    // finish like a player: sweep the pit's drops (the last batch's items may
+                    // still lie on the ground), then bank the load before opening the next
+                    // pit — the deposit simply completes if nothing was worth storing. The
+                    // sweep is deadline-capped so it can never stall the deposit behind it.
+                    queue.enqueue(new PickUpItemsTask(pitTop, PICKUP_RADIUS + 3, 200));
+                    queue.enqueue(new DepositToContainerTask(KEEP_ON_DEPOSIT));
+                    return true;
+                }
                 if (VillageManager.get(level).ensureStarterQuarry(level, villager)) {
                     quarry = planQuarryBatch(level, villager, essence, queue, hasTorches);
                 }
@@ -209,12 +223,16 @@ public class MinerPlanner implements RolePlanner {
 
     /**
      * Enqueues the next batch of quarry work. Dig phase: topmost unfinished layer, skipping
-     * the stair-line cells along the cornerA-side wall (one step down per column — vanilla
-     * villagers cannot climb ladders, so the pit must always be exitable on foot). Build
-     * phase: any stair cell that got lost along the way (obstruction clearing is allowed to
-     * mine through it) is rebuilt with carried cobblestone, deepest step first, so a miner at
-     * the pit bottom builds its own way out. Same contract as planTunnelSegment: true = work
-     * enqueued, false = too dark without torches, null = nothing to do (done/fluid hazard).
+     * the staircase cell of that layer. The staircase spirals down the pit perimeter, one
+     * step per rim cell (vanilla villagers cannot climb ladders, so the pit must always be
+     * exitable on foot) — so depth is no longer capped by one wall's length and pits can go
+     * as deep as their corners say. A 1-wide strip has no ring; it keeps the old straight
+     * stair and its depth cap (a switchback leaves no jump headroom). Build phase: any stair
+     * cell that got lost along the way (obstruction clearing is allowed to mine through it)
+     * is rebuilt with any carried scaffold block — dirt from the dig itself, or cobblestone —
+     * deepest step first, so a miner at the pit bottom builds its own way out. Same contract
+     * as planTunnelSegment: true = work enqueued, false = too dark without torches, null =
+     * nothing to do (done/fluid hazard).
      */
     private static Boolean planQuarryBatch(ServerLevel level, Villager villager,
                                            VillagerEssence essence, TaskQueue queue, boolean hasTorches) {
@@ -224,21 +242,26 @@ public class MinerPlanner implements RolePlanner {
         int minZ = Math.min(site.cornerA().getZ(), site.cornerB().getZ());
         int maxZ = Math.max(site.cornerA().getZ(), site.cornerB().getZ());
         int topY = Math.max(site.cornerA().getY(), site.cornerB().getY());
-        // one step down per stair column, so depth is capped by the stair wall length
         int bottomY = Math.max(Math.min(site.cornerA().getY(), site.cornerB().getY()),
-                topY - (maxX - minX) - 1);
-        int maxStep = Math.min(topY - bottomY, maxX - minX);
+                level.getMinBuildHeight());
+        List<BlockPos> ring = perimeterRing(minX, maxX, minZ, maxZ);
+        if (minX == maxX || minZ == maxZ) {
+            bottomY = Math.max(bottomY, topY - (ring.size() - 1));
+        }
 
         // dig phase
         for (int y = topY; y >= bottomY; y--) {
+            BlockPos stairColumn = ring.get(Math.floorMod(topY - y, ring.size()));
             List<BlockPos> digs = new ArrayList<>();
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
-                    if (isStairCell(x, y, z, minX, minZ, topY, maxStep)) {
+                    if (x == stairColumn.getX() && z == stairColumn.getZ()) {
                         continue;
                     }
                     BlockPos pos = new BlockPos(x, y, z);
-                    if (isDiggable(level.getBlockState(pos))) { // our torches are not rock
+                    BlockState state = level.getBlockState(pos);
+                    // our torches are not rock, and bedrock is left where it lies
+                    if (isDiggable(state) && state.getDestroySpeed(level, pos) >= 0) {
                         digs.add(pos);
                     }
                 }
@@ -252,7 +275,16 @@ public class MinerPlanner implements RolePlanner {
                     return null; // fluid in the pit wall — stop before breaching it
                 }
             }
+            // where the miner will actually stand: the first OPEN cell above the batch — the
+            // cell above the first dig can be the previous layer's stair block, and light
+            // inside solid rock always reads 0 ("too dark" forever, a stalled pit)
             BlockPos standing = batch.getFirst().above();
+            for (BlockPos pos : batch) {
+                if (!isDiggable(level.getBlockState(pos.above()))) {
+                    standing = pos.above();
+                    break;
+                }
+            }
             if (workLight(level, standing) < TorchChore.MIN_SAFE_BLOCK_LIGHT) {
                 // a torch must not stand on a block THIS batch is about to dig ("placed then
                 // broken a second later"); supports dug in later layers are fine — the torch
@@ -273,37 +305,49 @@ public class MinerPlanner implements RolePlanner {
         }
 
         // build phase: repair the staircase, deepest step first
-        for (int j = maxStep; j >= 0; j--) {
-            BlockPos step = new BlockPos(minX + j, topY - j, minZ);
+        for (int d = topY - bottomY; d >= 0; d--) {
+            BlockPos column = ring.get(Math.floorMod(d, ring.size()));
+            BlockPos step = new BlockPos(column.getX(), topY - d, column.getZ());
             BlockState state = level.getBlockState(step);
             if (state.isFaceSturdy(level, step, Direction.UP)) {
-                continue; // step stands (original stone or rebuilt cobble)
+                continue; // step stands (original stone, undug ground, or a rebuilt block)
             }
             if (!state.isAir() && !state.canBeReplaced()) {
                 queue.enqueue(new BreakBlockTask(step)); // e.g. a torch squatting on the step
                 return true;
             }
-            if (!essence.hasItem(villager, ItemFilter.parse("item:minecraft:cobblestone"))) {
-                // deposited the cobble already? get some back for the stairs
-                return fetchWithCooldown(level, essence, "item:minecraft:cobblestone", 8) ? true : null;
+            if (!essence.hasItem(villager, ItemFilter.parse(BuilderPlanner.SCAFFOLD_FILTER))) {
+                // deposited everything already? get some fill back for the stairs
+                return fetchWithCooldown(level, essence, BuilderPlanner.SCAFFOLD_FILTER, 8) ? true : null;
             }
-            queue.enqueue(new PlaceBlockTask(step, "item:minecraft:cobblestone"));
+            queue.enqueue(new PlaceBlockTask(step, BuilderPlanner.SCAFFOLD_FILTER));
             return true;
         }
         return null; // quarry complete, staircase intact
     }
 
-    private static boolean isStairCell(int x, int y, int z, int minX, int minZ, int topY, int maxStep) {
-        int j = x - minX;
-        return z == minZ && j >= 0 && j <= maxStep && topY - y == j;
+    /** XZ columns of the pit rim in walking order (y unused); a 1-wide pit yields a line. */
+    private static List<BlockPos> perimeterRing(int minX, int maxX, int minZ, int maxZ) {
+        List<BlockPos> ring = new ArrayList<>();
+        if (minX == maxX) {
+            for (int z = minZ; z <= maxZ; z++) ring.add(new BlockPos(minX, 0, z));
+        } else if (minZ == maxZ) {
+            for (int x = minX; x <= maxX; x++) ring.add(new BlockPos(x, 0, minZ));
+        } else {
+            for (int x = minX; x <= maxX; x++) ring.add(new BlockPos(x, 0, minZ));
+            for (int z = minZ + 1; z <= maxZ; z++) ring.add(new BlockPos(maxX, 0, z));
+            for (int x = maxX - 1; x >= minX; x--) ring.add(new BlockPos(x, 0, maxZ));
+            for (int z = maxZ - 1; z >= minZ + 1; z--) ring.add(new BlockPos(minX, 0, z));
+        }
+        return ring;
     }
 
     /** Solid work material — not air, and not a torch we placed for our own light. */
-    private static boolean isDiggable(BlockState state) {
+    static boolean isDiggable(BlockState state) {
         return !state.isAir() && !state.is(Blocks.TORCH) && !state.is(Blocks.WALL_TORCH);
     }
 
-    private static boolean hasAdjacentFluid(ServerLevel level, BlockPos pos) {
+    static boolean hasAdjacentFluid(ServerLevel level, BlockPos pos) {
         for (Direction direction : Direction.values()) {
             if (!level.getFluidState(pos.relative(direction)).isEmpty()) {
                 return true;

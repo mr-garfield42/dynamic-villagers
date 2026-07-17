@@ -772,10 +772,25 @@ Captured for later planning — do not start implementing until a phase plan pic
   its bell/bed/own position instead, and candidate spots span three distances (24/32/40) so watery
   or already-claimed edges cannot stall it (owner playtest fix 2026-07-16: roled miners far from a
   bell crafted wooden pickaxes then idled forever). A quarry whose next dig batch touches fluid, or
-  that is dug out, is abandoned: the dead top goes into villager memory (`quarry_rejected` spots)
-  and the miner immediately self-claims a fresh distinct pit — without this, a miner whose
-  persisted quarry went bad idled forever with an empty task queue (second owner playtest fix,
-  same day). All 137 GameTests pass.
+  that is dug out, is abandoned: the dead top goes into villager memory (`quarry_rejected` spots),
+  the pit's drops are swept (deadline-capped pickup) and banked to storage, and the miner then
+  self-claims a fresh distinct pit — without this, a miner whose persisted quarry went bad idled
+  forever with an empty task queue (second owner playtest fix, same day).
+- **Quarry overhaul (owner requests 2026-07-17).** The quarry staircase now SPIRALS down the pit
+  perimeter (one step per rim cell), so depth is no longer capped by one wall's length — starter
+  quarries are 24 deep (`top.offset(3, -24, 3)`); 1-wide strips keep the old straight stair + cap
+  (a switchback has no jump headroom). Stair repairs use any carried `scaffold` block (dirt from
+  the dig, or cobblestone), not just cobble. Miners haul mid-dig only at 192 non-kept items (~3
+  stacks, was a quarter-stack) and instead bank the full yield when each pit completes. A miner
+  trapped in its OWN pit (staircase destroyed) carves a rising 1×2 stair out through the lowest
+  wall — `EscapeChore`, block-walkability flood fill (heightmaps are useless under gametest
+  barrier encasement ceilings and real roofs), gated to its own diggings so it never carves
+  through village walls. Dig batches skip unbreakable blocks (bedrock), and the light check uses
+  the first OPEN cell above the batch — the cell above the first dig can be the previous layer's
+  stair block, and light inside solid rock reads 0 ("too dark" forever; latent pre-existing stall
+  the old 16-item haul threshold happened to mask). `DepositToContainerTask` refuses containers it
+  cannot see — keep chests' sight-lines clear of full blocks in tests (a crafting table beside the
+  chest made the miner skip it). All 138 GameTests pass.
   (`unhomed_idle_villagers_spread_across_available_houses` and
   `active_worker_drops_social_follow_target` are timing-sensitive and flake occasionally —
   re-run the suite before treating a lone failure of either as a regression.)
