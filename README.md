@@ -17,7 +17,6 @@ duplicate them:
 | --- | --- | --- |
 | [Guard Villagers](https://modrinth.com/mod/guard-villagers) | Combat & guard entities | Guards defend villages; we manage alerts, equipment funding, patrol assignments |
 | [Thief](https://modrinth.com/mod/thief) | Theft & crime detection | We react to its `CrimeCommitedEvent` etc. with social/economic consequences |
-| [Villager Overhaul](https://modrinth.com/mod/villager-overhaul) | Villager QoL, player-directed control | We drive *autonomous* villager behavior; VO keeps player-recruited villagers |
 
 ## Development setup
 
